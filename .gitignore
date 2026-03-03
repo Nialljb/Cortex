@@ -12,5 +12,6 @@ data
 __pycache__
 __init__.py
 *.pyc
+.DS_Store
 
 

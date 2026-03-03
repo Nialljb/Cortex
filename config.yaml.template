@@ -1,0 +1,37 @@
+# Web Application Authentication Configuration
+# Copy this to config.yaml and fill in real values
+# NEVER commit config.yaml with real credentials to git!
+
+credentials:
+  usernames:
+    # Example user 1
+    alice:
+      email: alice@university.edu
+      name: Alice Smith
+      # Generate with: import streamlit_authenticator as stauth; stauth.Hasher(['password123']).generate()
+      password: $2b$12$EXAMPLE_HASHED_PASSWORD_HERE
+      hpc_username: asmith  # Optional: their HPC username
+    
+    # Example user 2
+    bob:
+      email: bob@university.edu
+      name: Bob Jones
+      password: $2b$12$ANOTHER_HASHED_PASSWORD_HERE
+      hpc_username: bjones
+
+cookie:
+  name: hpc_manager_auth_cookie
+  # Generate random key: import secrets; secrets.token_urlsafe(32)
+  key: REPLACE_WITH_RANDOM_SECRET_KEY
+  expiry_days: 0  # 0 = session cookie (deleted when browser closes)
+
+# Security settings
+security:
+  session_timeout_minutes: 30
+  max_login_attempts: 3
+  lockout_duration_seconds: 300
+
+# Allowed HPC hostnames (whitelist)
+allowed_hpc_hosts:
+  - login1.nan.kcl.ac.uk
+  - login2.nan.kcl.ac.uk

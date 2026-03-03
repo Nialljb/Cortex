@@ -4,24 +4,50 @@ from pathlib import Path
 import tempfile
 
 class HPCSSHClient:
-    def __init__(self, hostname, username=None, key_path=None):
+    def __init__(self, hostname, username=None, password=None, key_path=None):
         self.hostname = hostname
         self.username = username or os.getenv("USER")
-        self.key_path = os.path.expanduser(key_path or "~/.ssh/id_rsa")
+        self.password = password  # Will be cleared after connection
+        self.key_path = os.path.expanduser(key_path or "~/.ssh/id_rsa") if key_path else None
 
         self.ssh_client = paramiko.SSHClient()
         self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self._connect()
 
     def _connect(self):
-        self.ssh_client.connect(
-            hostname=self.hostname,
-            username=self.username,
-            key_filename=self.key_path,
-            look_for_keys=True,
-            timeout=10,
-        )
-        print(f"Connected to {self.hostname} as {self.username}")
+        """Establish SSH connection using password or key authentication"""
+        try:
+            if self.password:
+                # Password authentication
+                self.ssh_client.connect(
+                    hostname=self.hostname,
+                    username=self.username,
+                    password=self.password,
+                    timeout=10,
+                    look_for_keys=False,
+                    allow_agent=False
+                )
+                # Clear password from memory immediately after connection
+                self.password = None
+            elif self.key_path:
+                # Key-based authentication
+                self.ssh_client.connect(
+                    hostname=self.hostname,
+                    username=self.username,
+                    key_filename=self.key_path,
+                    look_for_keys=True,
+                    timeout=10,
+                )
+            else:
+                raise ValueError("Either password or key_path must be provided")
+            
+            print(f"Connected to {self.hostname} as {self.username}")
+        except paramiko.AuthenticationException:
+            raise Exception("Authentication failed - check your credentials")
+        except paramiko.SSHException as e:
+            raise Exception(f"SSH connection error: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Connection failed: {str(e)}")
 
     def _run(self, command):
         stdin, stdout, stderr = self.ssh_client.exec_command(command)
@@ -30,6 +56,14 @@ class HPCSSHClient:
         if err:
             print(f"[stderr] {err}")
         return out
+    
+    def _run_with_exit_code(self, command):
+        """Run command and return (stdout, stderr, exit_code)"""
+        stdin, stdout, stderr = self.ssh_client.exec_command(command)
+        out = stdout.read().decode().strip()
+        err = stderr.read().decode().strip()
+        exit_code = stdout.channel.recv_exit_status()
+        return out, err, exit_code
 
     # --------------------------------------------------------------------
     # Basic filesystem and job management
@@ -113,6 +147,7 @@ class HPCSSHClient:
         gpus=0,
         time="01:00:00",
         output_log="slurm-%j.out",
+        bind_paths=None,
     ):
         """
         Create and submit a temporary SLURM batch script to run Apptainer.
@@ -125,17 +160,34 @@ class HPCSSHClient:
 #SBATCH --time={time}
 """
 
+
         if gpus > 0:
             slurm_script += f"#SBATCH --gres=gpu:{gpus}\n"
+
+        # Prepare bind paths for Apptainer
+        bind_option = ""
+        if bind_paths:
+            # Clean up bind_paths - remove whitespace and ensure proper formatting
+            bind_list = [p.strip() for p in bind_paths.split(',') if p.strip()]
+            if bind_list:
+                bind_option = f"--bind {','.join(bind_list)}"
 
         slurm_script += f"""
 cd {work_dir}
 
 echo "Running Apptainer job on $(hostname)"
-apptainer exec {image_path} {command}
+apptainer exec {bind_option} {image_path} {command}
 
 echo "Job completed at $(date)"
 """
+
+        # Ensure work directory exists
+        self._run(f"mkdir -p {work_dir}")
+        
+        # Ensure log directory exists (extract directory from output_log path)
+        if "/" in output_log:
+            log_dir = os.path.dirname(output_log)
+            self._run(f"mkdir -p {log_dir}")
 
         # Write the script to a temporary file and upload it
         with tempfile.NamedTemporaryFile("w", delete=False) as f:
@@ -148,10 +200,28 @@ echo "Job completed at $(date)"
         sftp.close()
         os.remove(tmp_local)
 
-        # Submit job
-        result = self._run(f"sbatch {remote_script}")
-        job_id = result.strip().split()[-1]
-        print(f"Submitted job {job_id}")
+        # Submit job with better error handling
+        out, err, exit_code = self._run_with_exit_code(f"sbatch {remote_script}")
+        
+        # Check if sbatch was successful
+        if exit_code != 0:
+            error_msg = f"sbatch failed with exit code {exit_code}"
+            if err:
+                error_msg += f"\nError: {err}"
+            if out:
+                error_msg += f"\nOutput: {out}"
+            raise RuntimeError(error_msg)
+        
+        if not out:
+            raise RuntimeError(f"sbatch command returned no output for {remote_script}")
+        
+        # Parse job ID from sbatch output (typically "Submitted batch job 12345")
+        parts = out.strip().split()
+        if len(parts) == 0:
+            raise RuntimeError(f"Unexpected sbatch output: {out}")
+        
+        job_id = parts[-1]
+        print(f"Submitted job {job_id}: {out}")
         return {"job_id": job_id, "remote_script": remote_script}
 
     def close(self):

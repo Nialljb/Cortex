@@ -2,9 +2,9 @@ import streamlit as st
 import os
 from hpc_client_ssh import HPCSSHClient
 
-st.set_page_config(page_title="Job Manager", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Job Manager", page_icon="🤖", layout="wide")
 
-st.title("🚀 Job Manager")
+st.title("NAN Job Manager")
 
 # Check connection
 if not st.session_state.get("connected", False) or not st.session_state.get("client"):
@@ -42,7 +42,6 @@ def submit_batch_apptainer_jobs(
     mem,
     gpus,
     time,
-    partition,
     work_dir,
     output_log_dir,
     bind_paths,
@@ -179,7 +178,6 @@ def submit_batch_apptainer_jobs(
                         mem=mem,
                         gpus=gpus,
                         time=time,
-                        partition=partition,
                         output_log=log_file,
                         bind_paths=bind_paths
                     )
@@ -321,7 +319,9 @@ def submit_batch_apptainer_jobs(
                     else:
                         command = container_config["command_template"].format(
                             input_file=input_filepath,
-                            output_dir=session_output_dir
+                            output_dir=session_output_dir,
+                            subject=subject,
+                            session=session if session else ""
                         )
                     
                     time_fmt = '%Y%m%d_%H%M%S'
@@ -347,7 +347,6 @@ def submit_batch_apptainer_jobs(
                             mem=mem,
                             gpus=gpus,
                             time=time,
-                            partition=partition,
                             output_log=log_file,
                             bind_paths=bind_paths
                         )
@@ -399,7 +398,7 @@ with tab1:
             "image_path": f"/home/{hpc_username}/repos/debug_test.sif",
             "command_template": "python /app/test_script.py --input {input_file} --output {output_dir} --subject {subject} --session {session}",
             "input_type": "acquisition",
-            "input_pattern": r".*_T2w\.nii\.gz$",
+            "input_pattern": r".*\.nii\.gz$",
             "input_subdir": "anat",
             "requires_derivative": None,
             "output_name": "debug_test",
@@ -514,10 +513,10 @@ with tab1:
             # Construct bids_dir based on selected project
             bids_dir = f"/home/{hpc_username}/projects/{selected_project}"
             
-            # Debug output (can remove later)
-            st.write(f"🔍 Debug - selected_project: {selected_project}")
-            st.write(f"🔍 Debug - hpc_username: {hpc_username}")
-            st.write(f"🔍 Debug - Final bids_dir: {bids_dir}")
+            # # Debug output (can remove later)
+            # st.write(f"🔍 Debug - selected_project: {selected_project}")
+            # st.write(f"🔍 Debug - hpc_username: {hpc_username}")
+            # st.write(f"🔍 Debug - Final bids_dir: {bids_dir}")
             
             selected_project_available = True
         else:
@@ -601,12 +600,6 @@ with tab1:
             with col4:
                 time = st.text_input("Time Limit", config["default_time"])
             
-            partition = st.text_input(
-                "Partition",
-                "general",
-                help="SLURM partition to submit to"
-            )
-            
             default_work_dir = f"{bids_dir}/work/{selected_container.lower()}"
             work_dir = st.text_input(
                 "Working Directory", 
@@ -646,7 +639,37 @@ with tab1:
             help="Preview what jobs would be submitted without actually submitting them"
         )
         
-        submit = st.form_submit_button("🚀 Submit Batch Jobs", use_container_width=True)
+
+        # Custom CSS for the submit button
+        st.html("""
+        <style>
+        .stForm button, .stButton>button {
+            background: #1a73e8 !important;
+            color: white !important;
+            border: 1px solid #1666c1 !important;
+            border-radius: 12px !important;
+            padding: 0.55rem 1.3rem !important;
+            font-weight: 500 !important;
+            font-size: 0.95rem !important;
+
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
+            transition: background 0.25s ease, transform 0.2s ease !important;
+        }
+
+        .stForm button:hover, .stButton>button:hover {
+            background: #1966d2 !important;
+            transform: translateY(-1px) !important;
+        }
+
+        .stForm button:active, .stButton>button:active {
+            background: #155bbf !important;
+            transform: translateY(0px) !important;
+        }
+        </style>
+        """)
+
+
+        submit = st.form_submit_button("Submit Batch Jobs", use_container_width=True)
         
         if submit:
             if not bids_dir or not output_dir:
@@ -667,7 +690,6 @@ with tab1:
                             mem=mem,
                             gpus=gpus,
                             time=time,
-                            partition=partition,
                             work_dir=work_dir,
                             output_log_dir=output_log_dir,
                             bind_paths=bind_paths,
