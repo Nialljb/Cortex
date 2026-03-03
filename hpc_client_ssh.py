@@ -4,24 +4,50 @@ from pathlib import Path
 import tempfile
 
 class HPCSSHClient:
-    def __init__(self, hostname, username=None, key_path=None):
+    def __init__(self, hostname, username=None, password=None, key_path=None):
         self.hostname = hostname
         self.username = username or os.getenv("USER")
-        self.key_path = os.path.expanduser(key_path or "~/.ssh/id_rsa")
+        self.password = password  # Will be cleared after connection
+        self.key_path = os.path.expanduser(key_path or "~/.ssh/id_rsa") if key_path else None
 
         self.ssh_client = paramiko.SSHClient()
         self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self._connect()
 
     def _connect(self):
-        self.ssh_client.connect(
-            hostname=self.hostname,
-            username=self.username,
-            key_filename=self.key_path,
-            look_for_keys=True,
-            timeout=10,
-        )
-        print(f"Connected to {self.hostname} as {self.username}")
+        """Establish SSH connection using password or key authentication"""
+        try:
+            if self.password:
+                # Password authentication
+                self.ssh_client.connect(
+                    hostname=self.hostname,
+                    username=self.username,
+                    password=self.password,
+                    timeout=10,
+                    look_for_keys=False,
+                    allow_agent=False
+                )
+                # Clear password from memory immediately after connection
+                self.password = None
+            elif self.key_path:
+                # Key-based authentication
+                self.ssh_client.connect(
+                    hostname=self.hostname,
+                    username=self.username,
+                    key_filename=self.key_path,
+                    look_for_keys=True,
+                    timeout=10,
+                )
+            else:
+                raise ValueError("Either password or key_path must be provided")
+            
+            print(f"Connected to {self.hostname} as {self.username}")
+        except paramiko.AuthenticationException:
+            raise Exception("Authentication failed - check your credentials")
+        except paramiko.SSHException as e:
+            raise Exception(f"SSH connection error: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Connection failed: {str(e)}")
 
     def _run(self, command):
         stdin, stdout, stderr = self.ssh_client.exec_command(command)
@@ -121,7 +147,6 @@ class HPCSSHClient:
         gpus=0,
         time="01:00:00",
         output_log="slurm-%j.out",
-        partition=None,
         bind_paths=None,
     ):
         """
@@ -135,8 +160,6 @@ class HPCSSHClient:
 #SBATCH --time={time}
 """
 
-        if partition:
-            slurm_script += f"#SBATCH --partition={partition}\n"
 
         if gpus > 0:
             slurm_script += f"#SBATCH --gres=gpu:{gpus}\n"
