@@ -1,5 +1,7 @@
+import re
 import streamlit as st
 import os
+from datetime import datetime
 from hpc_client_ssh import HPCSSHClient
 
 st.set_page_config(page_title="Job Manager", page_icon="🤖", layout="wide")
@@ -23,6 +25,190 @@ except:
 # Initialize job history
 if "job_history" not in st.session_state:
     st.session_state.job_history = []
+
+# ============================================================================
+# MODULE REGISTRY
+# Each entry defines an Apptainer-based analysis module.
+# Add new modules here; the Workflow tab will pick them up automatically.
+#
+# Fields:
+#   image_path         - Apptainer .sif path on the HPC
+#   command_template   - command run inside the container; supports placeholders:
+#                        {input_file}, {output_dir}, {subject}, {session},
+#                        {bids_dir} (bids_root type only)
+#   input_type         - "acquisition" | "derivatives" | "bids_root"
+#   input_pattern      - regex matched against filenames to find the input file
+#   input_subdir       - BIDS subdirectory to search (e.g. "anat"), or None
+#   requires_derivative- output_name of the upstream module this depends on, or None
+#   output_name        - written to derivatives/<output_name>/
+#   default_*          - Slurm resource defaults for this module
+# ============================================================================
+def _build_container_configs(hpc_user):
+    """Build CONTAINER_CONFIGS with the authenticated HPC username substituted into image paths."""
+    return {
+        "DebugTest": {
+            "image_path": f"/home/{hpc_user}/repos/debug_test.sif",
+            "command_template": "python /app/test_script.py --input {input_file} --output {output_dir} --subject {subject} --session {session}",
+            "input_type": "acquisition",
+            "input_pattern": r".*\.nii\.gz$",
+            "input_subdir": "anat",
+            "requires_derivative": None,
+            "output_name": "debug_test",
+            "default_cpus": 1,
+            "default_mem": "2G",
+            "default_gpus": 0,
+            "default_time": "00:10:00",
+            "description": "Debug test container for workflow validation",
+        },
+        "BabySeg": {
+            "image_path": f"/home/{hpc_user}/images/babyseg.sif",
+            "command_template": "python /app/run_babyseg.py --input {input_file} --output {output_dir}",
+            "input_type": "acquisition",
+            "input_pattern": r".*_T2w\.nii\.gz$",
+            "input_subdir": "anat",
+            "requires_derivative": None,
+            "output_name": "babyseg",
+            "default_cpus": 8,
+            "default_mem": "32G",
+            "default_gpus": 0,
+            "default_time": "04:00:00",
+            "description": "Infant brain segmentation",
+        },
+        "GAMBAS": {
+            "image_path": f"/home/{hpc_user}/images/gambas.sif",
+            "command_template": "python /app/run_gambas.py --input {input_file} --output {output_dir}",
+            "input_type": "acquisition",
+            "input_pattern": r".*_T2w\.nii\.gz$",
+            "input_subdir": "anat",
+            "requires_derivative": None,
+            "output_name": "gambas",
+            "default_cpus": 4,
+            "default_mem": "16G",
+            "default_gpus": 0,
+            "default_time": "02:00:00",
+            "description": "Brain tissue segmentation",
+        },
+        "Circumference": {
+            "image_path": f"/home/{hpc_user}/images/circumference.sif",
+            "command_template": "python /app/run_circumference.py --input {input_file} --output {output_dir}",
+            "input_type": "derivatives",
+            "input_pattern": r"(.*_mrr\.nii\.gz|.*_ResCNN\.nii\.gz|.*_T2w_gambas\.nii\.gz)$",
+            "input_subdir": "anat",
+            "requires_derivative": "gambas",
+            "output_name": "circumference",
+            "default_cpus": 4,
+            "default_mem": "16G",
+            "default_gpus": 0,
+            "default_time": "01:00:00",
+            "description": "Head circumference measurement (requires GAMBAS)",
+        },
+        "MRR": {
+            "image_path": f"/home/{hpc_user}/images/mrr.sif",
+            "command_template": "python /app/run_mrr.py --input {input_file} --output {output_dir}",
+            "input_type": "acquisition",
+            "input_pattern": r".*_T2w\.nii\.gz$",
+            "input_subdir": "anat",
+            "requires_derivative": None,
+            "output_name": "mrr",
+            "default_cpus": 4,
+            "default_mem": "24G",
+            "default_gpus": 0,
+            "default_time": "03:00:00",
+            "description": "MRI reconstruction and registration",
+        },
+        "fMRIPrep": {
+            "image_path": f"/home/{hpc_user}/images/fmriprep.sif",
+            "command_template": "fmriprep {bids_dir} {output_dir} participant --participant-label {subject}",
+            "input_type": "bids_root",
+            "input_pattern": None,
+            "input_subdir": None,
+            "requires_derivative": None,
+            "output_name": "fmriprep",
+            "default_cpus": 8,
+            "default_mem": "32G",
+            "default_gpus": 0,
+            "default_time": "24:00:00",
+            "description": "fMRI preprocessing pipeline",
+        },
+        # To add a new module, copy a block above and fill in the fields.
+        # "SuperSynth": {
+        #     "image_path": f"/home/{hpc_user}/images/supersynth.sif",
+        #     "command_template": "python /app/run_supersynth.py --input {input_file} --output {output_dir}",
+        #     "input_type": "derivatives",
+        #     "input_pattern": r".*_mrr\.nii\.gz$",
+        #     "input_subdir": "anat",
+        #     "requires_derivative": "mrr",
+        #     "output_name": "supersynth",
+        #     "default_cpus": 4,
+        #     "default_mem": "16G",
+        #     "default_gpus": 0,
+        #     "default_time": "02:00:00",
+        #     "description": "Synthetic contrast generation (requires MRR)",
+        # },
+    }
+
+
+CONTAINER_CONFIGS = _build_container_configs(
+    st.session_state.get("username", "$USER")
+)
+
+
+def resolve_submission_order(selected_modules):
+    """Topological sort of selected modules so upstream modules are submitted first.
+
+    Raises ValueError if a circular dependency is detected.
+    """
+    in_degree = {m: 0 for m in selected_modules}
+    graph = {m: [] for m in selected_modules}
+    for m in selected_modules:
+        req = CONTAINER_CONFIGS[m].get("requires_derivative")
+        if req and req in selected_modules:
+            graph[req].append(m)
+            in_degree[m] += 1
+    queue = [m for m in selected_modules if in_degree[m] == 0]
+    order = []
+    while queue:
+        node = queue.pop(0)
+        order.append(node)
+        for neighbor in graph[node]:
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+    if len(order) != len(selected_modules):
+        raise ValueError("Circular dependency detected in selected modules.")
+    return order
+
+
+def refresh_manifest_statuses(manifest, client):
+    """Poll Slurm for all in-flight job IDs and update manifest statuses in place."""
+    slurm_to_cortex = {
+        "RUNNING": "running",
+        "PENDING": "queued",
+        "COMPLETED": "complete",
+        "FAILED": "failed",
+        "CANCELLED": "failed",
+        "TIMEOUT": "failed",
+        "OUT_OF_MEMORY": "failed",
+        "NODE_FAIL": "failed",
+    }
+    job_ids = [
+        info["job_id"]
+        for modules in manifest.values()
+        for info in modules.values()
+        if info.get("job_id") and info.get("status") in ("queued", "running")
+    ]
+    if not job_ids:
+        return manifest
+    slurm_statuses = client.poll_job_statuses(job_ids)
+    for modules in manifest.values():
+        for info in modules.values():
+            jid = info.get("job_id")
+            if jid and jid in slurm_statuses:
+                new_status = slurm_to_cortex.get(slurm_statuses[jid], "unknown")
+                info["status"] = new_status
+                if new_status == "complete" and not info.get("completed_at"):
+                    info["completed_at"] = datetime.now().isoformat()
+    return manifest
 
 # Create tabs
 tab1, tab2, tab3 = st.tabs(["🐳 Apptainer", "🔧 Scripts", "🔄 Workflows"])
@@ -392,94 +578,6 @@ with tab1:
     st.write("Run containerized applications on the HPC cluster.")
     
 
-    # Define available containers with their configurations
-    CONTAINER_CONFIGS = {
-        "DebugTest": {
-            "image_path": f"/home/{hpc_username}/repos/debug_test.sif",
-            "command_template": "python /app/test_script.py --input {input_file} --output {output_dir} --subject {subject} --session {session}",
-            "input_type": "acquisition",
-            "input_pattern": r".*\.nii\.gz$",
-            "input_subdir": "anat",
-            "requires_derivative": None,
-            "output_name": "debug_test",
-            "default_cpus": 1,
-            "default_mem": "2G",
-            "default_gpus": 0,
-            "default_time": "00:10:00",
-            "description": "Debug test container for workflow validation"
-        },
-        "BabySeg": {
-            "image_path": f"/home/{hpc_username}/images/babyseg.sif",
-            "command_template": "python /app/run_babyseg.py --input {input_file} --output {output_dir}",
-            "input_type": "acquisition",  # or "derivatives"
-            "input_pattern": r".*_T2w\.nii\.gz$",
-            "input_subdir": "anat",  # subdirectory within session (anat, func, dwi, etc.)
-            "requires_derivative": None,  # None if raw data, or name of required pipeline
-            "output_name": "babyseg",
-            "default_cpus": 8,
-            "default_mem": "32G",
-            "default_gpus": 0,
-            "default_time": "04:00:00",
-            "description": "Infant brain segmentation"
-        },
-        "GAMBAS": {
-            "image_path": f"/home/{hpc_username}/images/gambas.sif",
-            "command_template": "python /app/run_gambas.py --input {input_file} --output {output_dir}",
-            "input_type": "acquisition",
-            "input_pattern": r".*_T2w\.nii\.gz$",
-            "input_subdir": "anat",
-            "requires_derivative": None,
-            "output_name": "gambas",
-            "default_cpus": 4,
-            "default_mem": "16G",
-            "default_gpus": 0,
-            "default_time": "02:00:00",
-            "description": "Brain tissue segmentation"
-        },
-        "Circumference": {
-            "image_path": f"/home/{hpc_username}/images/circumference.sif",
-            "command_template": "python /app/run_circumference.py --input {input_file} --output {output_dir}",
-            "input_type": "derivatives",
-            "input_pattern": r"(.*_mrr\.nii\.gz|.*_ResCNN\.nii\.gz|.*_T2w_gambas\.nii\.gz)$",
-            "input_subdir": "anat",
-            "requires_derivative": "gambas",  # Requires GAMBAS output
-            "output_name": "circumference",
-            "default_cpus": 4,
-            "default_mem": "16G",
-            "default_gpus": 0,
-            "default_time": "01:00:00",
-            "description": "Head circumference measurement (requires GAMBAS)"
-        },
-        "MRR": {
-            "image_path": f"/home/{hpc_username}/images/mrr.sif",
-            "command_template": "python /app/run_mrr.py --input {input_file} --output {output_dir}",
-            "input_type": "acquisition",
-            "input_pattern": r".*_T2w\.nii\.gz$",
-            "input_subdir": "anat",
-            "requires_derivative": None,
-            "output_name": "mrr",
-            "default_cpus": 4,
-            "default_mem": "24G",
-            "default_gpus": 0,
-            "default_time": "03:00:00",
-            "description": "MRI reconstruction and registration"
-        },
-        "fMRIPrep": {
-            "image_path": f"/home/{hpc_username}/images/fmriprep.sif",
-            "command_template": "fmriprep {bids_dir} {output_dir} participant --participant-label {subject}",
-            "input_type": "bids_root",  # Uses entire BIDS directory
-            "input_pattern": None,
-            "input_subdir": None,
-            "requires_derivative": None,
-            "output_name": "fmriprep",
-            "default_cpus": 8,
-            "default_mem": "32G",
-            "default_gpus": 0,
-            "default_time": "24:00:00",
-            "description": "fMRI preprocessing pipeline"
-        }
-    }
-    
     # Container selection
     selected_container = st.selectbox(
         "Select Container",
@@ -794,40 +892,396 @@ with tab2:
 # TAB 3: WORKFLOWS
 # ============================================================================
 with tab3:
-    st.header("Multi-Step Workflows")
-    st.write("Chain multiple jobs together with dependencies.")
-    
-    st.info("🚧 Workflow feature coming soon! This will allow you to create complex pipelines with multiple dependent jobs.")
-    
-    st.markdown("""
-    ### Planned Features:
-    - **Job Dependencies**: Chain jobs so they run in sequence
-    - **Parallel Execution**: Run multiple independent jobs simultaneously
-    - **Conditional Logic**: Branch workflows based on results
-    - **Workflow Templates**: Save and reuse common workflows
-    - **Visual Pipeline Builder**: Drag-and-drop interface for creating workflows
-    """)
-    
-    # Placeholder for future workflow builder
-    with st.expander("Example Workflow Structure"):
-        st.code("""
-        workflow:
-          name: "MRI Processing Pipeline"
-          steps:
-            - id: preprocessing
-              type: node
-              node: "Structural Segmentation"
-              
-            - id: dti
-              type: node
-              node: "DTI Pipeline"
-              depends_on: [preprocessing]
-              
-            - id: fmri
-              type: node
-              node: "fMRI Preprocessing"
-              depends_on: [preprocessing]
-        """, language="yaml")
+    st.header("Pipeline Workflow Builder")
+    st.write(
+        "Select a project and modules to run as a pipeline. "
+        "Modules with dependencies are automatically chained using Slurm `afterok`."
+    )
+
+    # --- Project selection ---
+    try:
+        wf_project_dirs = client.list_project_directories()
+    except Exception as e:
+        st.error(f"Could not load projects: {e}")
+        wf_project_dirs = []
+
+    if not wf_project_dirs:
+        st.warning("No projects found in ~/projects/")
+    else:
+        wf_project = st.selectbox(
+            "Select Project",
+            options=wf_project_dirs,
+            key="wf_project",
+        )
+        wf_home_dir = client._run("echo $HOME").strip()
+        wf_project_path = f"{wf_home_dir}/projects/{wf_project}"
+
+        st.markdown("---")
+
+        # --- Module selection ---
+        st.subheader("Select Modules")
+
+        # Build a map of what each module depends on and what depends on it
+        dep_labels = {}
+        for mod_name, cfg in CONTAINER_CONFIGS.items():
+            req = cfg.get("requires_derivative")
+            dep_labels[mod_name] = f" ← requires **{req.upper()}**" if req else ""
+
+        selected_modules = []
+        cols = st.columns(3)
+        for idx, (mod_name, cfg) in enumerate(CONTAINER_CONFIGS.items()):
+            with cols[idx % 3]:
+                label = f"**{mod_name}**{dep_labels[mod_name]}  \n*{cfg['description']}*"
+                if st.checkbox(mod_name, key=f"wf_mod_{mod_name}", help=cfg["description"]):
+                    selected_modules.append(mod_name)
+
+        if selected_modules:
+            # Warn about unsatisfied dependencies
+            for mod in selected_modules:
+                req = CONTAINER_CONFIGS[mod].get("requires_derivative")
+                if req and req not in selected_modules:
+                    st.warning(
+                        f"**{mod}** requires **{req.upper()}** as input. "
+                        f"Add {req.upper()} to the pipeline, or ensure it has already been run "
+                        f"and its output exists in `derivatives/{req}/`."
+                    )
+
+            try:
+                ordered = resolve_submission_order(selected_modules)
+                st.info(f"Submission order: **{' → '.join(ordered)}**")
+            except ValueError as e:
+                st.error(str(e))
+                ordered = []
+
+            if ordered:
+                st.markdown("---")
+
+                # --- Filters ---
+                col1, col2 = st.columns(2)
+                with col1:
+                    wf_subject_filter = st.text_input(
+                        "Subject filter (optional)",
+                        placeholder="sub-01, sub-02",
+                        key="wf_subject_filter",
+                        help="Comma-separated subject IDs. Leave blank to process all.",
+                    )
+                with col2:
+                    wf_session_filter = st.text_input(
+                        "Session filter (optional)",
+                        placeholder="ses-01",
+                        key="wf_session_filter",
+                        help="Partial match on session label. Leave blank for all.",
+                    )
+
+                wf_dry_run = st.checkbox(
+                    "Dry run (preview jobs without submitting)",
+                    key="wf_dry_run",
+                )
+
+                if st.button("Submit Pipeline", use_container_width=True, key="wf_submit"):
+                    manifest = client.read_pipeline_manifest(wf_project_path)
+
+                    # Scan subjects
+                    try:
+                        all_items = client.list_directory(wf_project_path)
+                        subjects = sorted(s for s in all_items if s.startswith("sub-"))
+                    except Exception as e:
+                        st.error(f"Could not scan project directory: {e}")
+                        subjects = []
+
+                    if wf_subject_filter:
+                        filter_list = [s.strip() for s in wf_subject_filter.split(",")]
+                        subjects = [s for s in subjects if s in filter_list]
+
+                    if not subjects:
+                        st.warning("No matching subjects found.")
+                    else:
+                        progress = st.progress(0)
+                        submitted_count = 0
+                        skipped_count = 0
+
+                        for sub_idx, subject in enumerate(subjects):
+                            subject_path = f"{wf_project_path}/{subject}"
+
+                            try:
+                                sub_contents = client.list_directory(subject_path)
+                                sessions = sorted(
+                                    d for d in sub_contents if d.startswith("ses-")
+                                )
+                            except Exception:
+                                sessions = []
+
+                            if not sessions:
+                                sessions = [None]
+
+                            for session in sessions:
+                                session_label = session or "no_session"
+
+                                if wf_session_filter and session and wf_session_filter not in session:
+                                    continue
+
+                                key = f"{subject}/{session_label}"
+                                if key not in manifest:
+                                    manifest[key] = {}
+
+                                # job_ids accumulated within this subject/session for chaining
+                                session_job_ids = {}
+
+                                for module_name in ordered:
+                                    cfg = CONTAINER_CONFIGS[module_name]
+
+                                    # Skip if already complete in manifest
+                                    existing = manifest[key].get(module_name, {})
+                                    if existing.get("status") == "complete":
+                                        st.write(
+                                            f"✓ `{subject}/{session_label}` — **{module_name}**: "
+                                            f"already complete, skipping"
+                                        )
+                                        skipped_count += 1
+                                        continue
+
+                                    # --- Resolve input file and build command ---
+                                    command = None
+
+                                    if cfg["input_type"] == "bids_root":
+                                        # Processes entire BIDS dataset per subject; no file search needed
+                                        subject_id = subject.replace("sub-", "")
+                                        output_dir = f"{wf_project_path}/derivatives/{cfg['output_name']}"
+                                        command = cfg["command_template"].format(
+                                            bids_dir=wf_project_path,
+                                            output_dir=output_dir,
+                                            subject=subject_id,
+                                        )
+
+                                    elif cfg["input_type"] == "acquisition":
+                                        if session:
+                                            search_path = f"{subject_path}/{session}/{cfg['input_subdir']}"
+                                        else:
+                                            search_path = f"{subject_path}/{cfg['input_subdir']}"
+                                        try:
+                                            file_list = client.list_directory(search_path)
+                                        except Exception:
+                                            st.write(
+                                                f"⏭ `{subject}/{session_label}` — **{module_name}**: "
+                                                f"`{cfg['input_subdir']}` dir not found"
+                                            )
+                                            skipped_count += 1
+                                            continue
+                                        input_file = None
+                                        for fname in file_list:
+                                            if re.search(cfg["input_pattern"], fname):
+                                                input_file = f"{search_path}/{fname}"
+                                                break
+                                        if not input_file:
+                                            st.write(
+                                                f"⏭ `{subject}/{session_label}` — **{module_name}**: "
+                                                f"no file matching `{cfg['input_pattern']}`"
+                                            )
+                                            skipped_count += 1
+                                            continue
+                                        if session:
+                                            output_dir = f"{wf_project_path}/derivatives/{cfg['output_name']}/{subject}/{session}"
+                                        else:
+                                            output_dir = f"{wf_project_path}/derivatives/{cfg['output_name']}/{subject}"
+                                        command = cfg["command_template"].format(
+                                            input_file=input_file,
+                                            output_dir=output_dir,
+                                            subject=subject,
+                                            session=session or "",
+                                        )
+
+                                    elif cfg["input_type"] == "derivatives":
+                                        req = cfg["requires_derivative"]
+                                        if session:
+                                            deriv_path = f"{wf_project_path}/derivatives/{req}/{subject}/{session}/{cfg['input_subdir']}"
+                                        else:
+                                            deriv_path = f"{wf_project_path}/derivatives/{req}/{subject}/{cfg['input_subdir']}"
+                                        try:
+                                            file_list = client.list_directory(deriv_path)
+                                        except Exception:
+                                            st.write(
+                                                f"⏭ `{subject}/{session_label}` — **{module_name}**: "
+                                                f"no `{req}` derivative output found"
+                                            )
+                                            skipped_count += 1
+                                            continue
+                                        input_file = None
+                                        for fname in file_list:
+                                            if re.search(cfg["input_pattern"], fname):
+                                                input_file = f"{deriv_path}/{fname}"
+                                                break
+                                        if not input_file:
+                                            st.write(
+                                                f"⏭ `{subject}/{session_label}` — **{module_name}**: "
+                                                f"no matching file in `{req}` derivatives"
+                                            )
+                                            skipped_count += 1
+                                            continue
+                                        if session:
+                                            output_dir = f"{wf_project_path}/derivatives/{cfg['output_name']}/{subject}/{session}"
+                                        else:
+                                            output_dir = f"{wf_project_path}/derivatives/{cfg['output_name']}/{subject}"
+                                        command = cfg["command_template"].format(
+                                            input_file=input_file,
+                                            output_dir=output_dir,
+                                            subject=subject,
+                                            session=session or "",
+                                        )
+
+                                    if command is None:
+                                        st.write(
+                                            f"⏭ `{subject}/{session_label}` — **{module_name}**: "
+                                            f"unknown input_type `{cfg['input_type']}`"
+                                        )
+                                        skipped_count += 1
+                                        continue
+
+                                    # --- Slurm dependency chaining ---
+                                    dep_ids = []
+                                    req_mod = cfg.get("requires_derivative")
+                                    if req_mod and req_mod in session_job_ids:
+                                        dep_ids = [session_job_ids[req_mod]]
+
+                                    # --- Slurm job metadata ---
+                                    time_fmt = "%Y%m%d_%H%M%S"
+                                    job_name = f"{cfg['output_name']}_{subject}_{session_label}_{datetime.now().strftime(time_fmt)}"
+                                    work_dir = f"{wf_project_path}/work/{module_name.lower()}"
+                                    log_file = f"{wf_project_path}/logs/{module_name.lower()}/{job_name}.out"
+
+                                    if wf_dry_run:
+                                        dep_str = f" [after job {', '.join(dep_ids)}]" if dep_ids else ""
+                                        st.write(
+                                            f"[DRY RUN] `{subject}/{session_label}` — **{module_name}**{dep_str}"
+                                        )
+                                        st.code(command, language="bash")
+                                        manifest[key][module_name] = {
+                                            "status": "dry_run",
+                                            "job_id": None,
+                                            "submitted_at": datetime.now().isoformat(),
+                                            "completed_at": None,
+                                            "depends_on": [req_mod] if req_mod else [],
+                                        }
+                                    else:
+                                        try:
+                                            result = client.submit_apptainer_job(
+                                                image_path=cfg["image_path"],
+                                                command=command,
+                                                job_name=job_name,
+                                                work_dir=work_dir,
+                                                cpus=cfg["default_cpus"],
+                                                mem=cfg["default_mem"],
+                                                gpus=cfg["default_gpus"],
+                                                time=cfg["default_time"],
+                                                output_log=log_file,
+                                                dependency_job_ids=dep_ids or None,
+                                            )
+                                            job_id = result["job_id"]
+                                            session_job_ids[module_name] = job_id
+                                            manifest[key][module_name] = {
+                                                "status": "queued",
+                                                "job_id": job_id,
+                                                "submitted_at": datetime.now().isoformat(),
+                                                "completed_at": None,
+                                                "depends_on": [req_mod] if req_mod else [],
+                                            }
+                                            submitted_count += 1
+                                            st.write(
+                                                f"✅ `{subject}/{session_label}` — **{module_name}**: job `{job_id}`"
+                                            )
+                                        except Exception as e:
+                                            st.error(
+                                                f"❌ `{subject}/{session_label}` — **{module_name}**: {e}"
+                                            )
+                                            manifest[key][module_name] = {
+                                                "status": "failed",
+                                                "job_id": None,
+                                                "submitted_at": datetime.now().isoformat(),
+                                                "completed_at": None,
+                                                "depends_on": [req_mod] if req_mod else [],
+                                                "error": str(e),
+                                            }
+
+                            progress.progress((sub_idx + 1) / len(subjects))
+
+                        progress.empty()
+
+                        if not wf_dry_run:
+                            client.write_pipeline_manifest(wf_project_path, manifest)
+                            st.success(
+                                f"Pipeline submitted: {submitted_count} jobs queued, "
+                                f"{skipped_count} already complete."
+                            )
+                        else:
+                            st.info("Dry run complete — no jobs submitted.")
+
+        st.markdown("---")
+
+        # -----------------------------------------------------------------------
+        # STATUS DASHBOARD
+        # -----------------------------------------------------------------------
+        st.subheader("Pipeline Status")
+
+        status_col1, status_col2 = st.columns([1, 1])
+        with status_col1:
+            status_project = st.selectbox(
+                "Project",
+                options=wf_project_dirs,
+                key="wf_status_project",
+            )
+        with status_col2:
+            st.write("")
+            st.write("")
+            refresh_clicked = st.button("Refresh Status", key="wf_refresh")
+
+        status_home = client._run("echo $HOME").strip()
+        status_project_path = f"{status_home}/projects/{status_project}"
+
+        manifest = client.read_pipeline_manifest(status_project_path)
+
+        if refresh_clicked and manifest:
+            with st.spinner("Polling Slurm for job statuses..."):
+                manifest = refresh_manifest_statuses(manifest, client)
+            client.write_pipeline_manifest(status_project_path, manifest)
+            st.success("Status updated.")
+
+        if not manifest:
+            st.info("No pipeline runs recorded for this project yet.")
+        else:
+            # Build a flat table: one row per subject/session × module
+            STATUS_ICONS = {
+                "queued":   "🟡 queued",
+                "running":  "🟢 running",
+                "complete": "✅ complete",
+                "failed":   "❌ failed",
+                "dry_run":  "🔍 dry_run",
+                "unknown":  "⚪ unknown",
+            }
+
+            all_modules = sorted(
+                {mod for mods in manifest.values() for mod in mods}
+            )
+            rows = []
+            for key, mods in sorted(manifest.items()):
+                row = {"Subject / Session": key}
+                for mod in all_modules:
+                    info = mods.get(mod, {})
+                    status = info.get("status", "—")
+                    row[mod] = STATUS_ICONS.get(status, status)
+                rows.append(row)
+
+            import pandas as pd
+            df_status = pd.DataFrame(rows)
+            st.dataframe(df_status, use_container_width=True, hide_index=True)
+
+            # Detail expander for a selected row
+            with st.expander("View job details"):
+                selected_key = st.selectbox(
+                    "Subject / Session", options=list(manifest.keys()), key="wf_detail_key"
+                )
+                if selected_key and selected_key in manifest:
+                    for mod, info in manifest[selected_key].items():
+                        st.markdown(f"**{mod}**")
+                        st.json(info)
 
 # ============================================================================
 # JOB MONITORING SECTION

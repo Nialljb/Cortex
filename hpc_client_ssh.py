@@ -1,4 +1,5 @@
 import os
+import json
 import paramiko
 from pathlib import Path
 import tempfile
@@ -136,6 +137,71 @@ class HPCSSHClient:
     # Slurm + Apptainer job submission
     # --------------------------------------------------------------------
 
+    def read_pipeline_manifest(self, project_path):
+        """Read the pipeline status manifest from <project>/.cortex/pipeline_status.json.
+
+        Returns an empty dict if the file does not exist yet.
+        """
+        manifest_path = f"{project_path}/.cortex/pipeline_status.json"
+        try:
+            sftp = self.ssh_client.open_sftp()
+            with sftp.open(manifest_path, "rb") as f:
+                content = f.read().decode("utf-8")
+            sftp.close()
+            return json.loads(content)
+        except IOError:
+            # File doesn't exist yet
+            return {}
+        except Exception as e:
+            print(f"[manifest] Could not read manifest: {e}")
+            return {}
+
+    def write_pipeline_manifest(self, project_path, manifest):
+        """Write the pipeline status manifest to <project>/.cortex/pipeline_status.json."""
+        cortex_dir = f"{project_path}/.cortex"
+        manifest_path = f"{cortex_dir}/pipeline_status.json"
+        self._run(f"mkdir -p {cortex_dir}")
+        content = json.dumps(manifest, indent=2).encode("utf-8")
+        sftp = self.ssh_client.open_sftp()
+        with sftp.open(manifest_path, "wb") as f:
+            f.write(content)
+        sftp.close()
+
+    def poll_job_statuses(self, job_ids):
+        """Return a dict of {job_id: status} for the given Slurm job IDs.
+
+        Uses sacct (covers all states including completed/failed) with a
+        squeue fallback for clusters where accounting is unavailable.
+        Status values match Slurm states: PENDING, RUNNING, COMPLETED, FAILED,
+        CANCELLED, TIMEOUT, OUT_OF_MEMORY.
+        """
+        if not job_ids:
+            return {}
+        ids_str = ",".join(str(j) for j in job_ids)
+        # sacct covers historical jobs; squeue only covers active ones
+        out = self._run(
+            f"sacct -j {ids_str} --format=JobID,State --noheader --parsable2 2>/dev/null"
+        )
+        if not out:
+            # Fall back to squeue for clusters without accounting enabled
+            out = self._run(
+                f"squeue -j {ids_str} -h -o '%i|%T' 2>/dev/null"
+            )
+        statuses = {}
+        for line in out.splitlines():
+            line = line.strip()
+            if not line or "|" not in line:
+                continue
+            parts = line.split("|")
+            if len(parts) < 2:
+                continue
+            # Strip array/step suffixes (e.g. "12345.batch" → "12345")
+            job_id = parts[0].split(".")[0]
+            state = parts[1].strip()
+            if job_id.isdigit() and job_id not in statuses:
+                statuses[job_id] = state
+        return statuses
+
     def submit_apptainer_job(
         self,
         image_path,
@@ -148,9 +214,13 @@ class HPCSSHClient:
         time="01:00:00",
         output_log="slurm-%j.out",
         bind_paths=None,
+        dependency_job_ids=None,
     ):
         """
         Create and submit a temporary SLURM batch script to run Apptainer.
+
+        dependency_job_ids: optional list of Slurm job ID strings that must
+        complete successfully before this job starts (afterok chaining).
         """
         slurm_script = f"""#!/bin/bash
 #SBATCH --job-name={job_name}
@@ -160,6 +230,9 @@ class HPCSSHClient:
 #SBATCH --time={time}
 """
 
+        if dependency_job_ids:
+            dep_str = ":".join(str(j) for j in dependency_job_ids)
+            slurm_script += f"#SBATCH --dependency=afterok:{dep_str}\n"
 
         if gpus > 0:
             slurm_script += f"#SBATCH --gres=gpu:{gpus}\n"

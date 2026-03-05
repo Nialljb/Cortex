@@ -17,13 +17,8 @@ def get_projects(client):
         # Using $HOME instead of ~ to ensure proper expansion
         result = client._run("find $HOME/projects -maxdepth 1 -mindepth 1 -type d -exec basename {} \;")
         
-        # Debug: show raw result
-        st.write(f"Debug - Raw result: `{result}`")
-        st.write(f"Debug - Result length: {len(result) if result else 0}")
-        
         if result:
             projects = [p.strip() for p in result.split('\n') if p.strip()]
-            st.write(f"Debug - Parsed projects: {projects}")
             return sorted(projects)
         return []
     except Exception as e:
