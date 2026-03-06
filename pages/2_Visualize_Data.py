@@ -3,118 +3,22 @@ import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 
+from utils.sidebar import render_project_selector
+from utils.bids import (
+    get_projects,
+    count_subjects_and_sessions,
+    get_subjects,
+    get_sessions,
+    get_acquisitions,
+    get_files_in_directory,
+)
+
 st.set_page_config(
     page_title="Visualize Data",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-def get_projects(client):
-    """Get list of projects from ~/projects directory."""
-    try:
-        # Use find with maxdepth to get only immediate subdirectories
-        # Using $HOME instead of ~ to ensure proper expansion
-        result = client._run("find $HOME/projects -maxdepth 1 -mindepth 1 -type d -exec basename {} \;")
-        
-        if result:
-            projects = [p.strip() for p in result.split('\n') if p.strip()]
-            return sorted(projects)
-        return []
-    except Exception as e:
-        st.error(f"Error fetching projects: {e}")
-        import traceback
-        st.code(traceback.format_exc())
-        return []
-
-def count_subjects_and_sessions(client, project_path):
-    """Count the number of subjects and sessions in a project."""
-    try:
-        # Count subjects (first-level directories)
-        result_subjects = client._run(
-            f"find {project_path} -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l"
-        )
-        num_subjects = int(result_subjects.strip()) if result_subjects else 0
-        
-        # Count sessions (second-level directories)
-        result_sessions = client._run(
-            f"find {project_path} -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l"
-        )
-        num_sessions = int(result_sessions.strip()) if result_sessions else 0
-        
-        return num_subjects, num_sessions
-    except Exception as e:
-        st.error(f"Error counting subjects/sessions: {e}")
-        return 0, 0
-
-def get_subjects(client, project_path):
-    """Get list of subjects in a project."""
-    try:
-        result = client._run(
-            f"cd {project_path} && ls -d */ 2>/dev/null | tr -d '/'"
-        )
-        if result:
-            subjects = [s.strip() for s in result.split('\n') if s.strip()]
-            return sorted(subjects)
-        return []
-    except Exception as e:
-        st.error(f"Error getting subjects: {e}")
-        return []
-
-def get_sessions(client, subject_path):
-    """Get list of sessions for a subject."""
-    try:
-        result = client._run(
-            f"cd {subject_path} && ls -d */ 2>/dev/null | tr -d '/'"
-        )
-        if result:
-            sessions = [s.strip() for s in result.split('\n') if s.strip()]
-            return sorted(sessions)
-        return []
-    except Exception as e:
-        st.error(f"Error getting sessions: {e}")
-        return []
-
-def get_acquisitions(client, session_path):
-    """Get list of acquisition directories in a session."""
-    try:
-        result = client._run(
-            f"cd {session_path} && ls -d */ 2>/dev/null | tr -d '/'"
-        )
-        if result:
-            acquisitions = [a.strip() for a in result.split('\n') if a.strip()]
-            return sorted(acquisitions)
-        return []
-    except Exception as e:
-        st.error(f"Error getting acquisitions: {e}")
-        return []
-
-def get_files_in_directory(client, directory_path):
-    """Get list of files in a directory with their sizes and modification times."""
-    try:
-        result = client._run(
-            f"ls -lh --time-style=long-iso {directory_path} 2>/dev/null | grep '^-'"
-        )
-        
-        if not result:
-            return []
-        
-        files = []
-        for line in result.split('\n'):
-            if not line.strip():
-                continue
-            parts = line.split()
-            if len(parts) >= 8:
-                files.append({
-                    'name': ' '.join(parts[7:]),
-                    'size': parts[4],
-                    'modified': f"{parts[5]} {parts[6]}"
-                })
-        
-        return files
-    except Exception as e:
-        st.error(f"Error getting files: {e}")
-        return []
 
 def create_tree_diagram(subjects_data):
     """Create a treemap visualization of subjects and sessions."""
@@ -181,28 +85,20 @@ if not st.session_state.get("connected") or not st.session_state.get("client"):
 
 client = st.session_state.client
 
-# Get available projects
-with st.spinner("Loading projects..."):
-    projects = get_projects(client)
+# Sidebar: global project selector
+render_project_selector(client)
 
-if not projects:
-    st.warning("No projects found in ~/projects directory")
-    st.info("Projects should be located at ~/projects on your HPC system.")
-    st.stop()
+# Cache home dir to avoid repeated SSH calls
+if "_home_dir" not in st.session_state:
+    st.session_state["_home_dir"] = client._run("echo $HOME").strip()
+home_dir = st.session_state["_home_dir"]
 
-# Project selection
-st.subheader("Select Project")
-selected_project = st.selectbox(
-    "Choose a project to visualize:",
-    options=projects,
-    key="viz_project_selector",
-    help="Select a project to explore its data structure"
-)
-
+selected_project = st.session_state.get("selected_project")
 if not selected_project:
+    st.info("Select a project from the sidebar to get started.")
     st.stop()
 
-project_path = f"~/projects/{selected_project}"
+project_path = f"{home_dir}/projects/{selected_project}"
 
 # Display project summary
 with st.spinner("Loading project summary..."):

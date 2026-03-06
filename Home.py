@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import time
 from hpc_client_ssh import HPCSSHClient
+from utils.sidebar import render_project_selector, clear_project_state
 
 st.set_page_config(
     page_title="Home",
@@ -29,6 +30,8 @@ if "lockout_until" not in st.session_state:
     st.session_state.lockout_until = 0
 if "last_activity" not in st.session_state:
     st.session_state.last_activity = time.time()
+if "selected_project" not in st.session_state:
+    st.session_state.selected_project = None
 
 # Check session timeout
 if st.session_state.connected:
@@ -63,7 +66,11 @@ if st.session_state.connected and st.session_state.client:
         st.session_state.client = None
         st.session_state.connected = False
         st.session_state.login_attempts = 0  # Reset on manual disconnect
+        clear_project_state()
         st.rerun()
+
+    render_project_selector(st.session_state.client)
+
 else:
     st.sidebar.info("Not connected")
     
@@ -171,10 +178,10 @@ if st.session_state.connected:
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.markdown("### 🚀 Job Manager")
-        st.write("Submit and manage Slurm jobs, run Apptainer containers, and create workflows.")
-        if st.button("Go to Job Manager", use_container_width=True):
-            st.switch_page("pages/1_Job_Manager.py")
+        st.markdown("### 🔄 Workflows")
+        st.write("Configure analysis pipelines, submit jobs to the HPC cluster, and monitor pipeline status.")
+        if st.button("Go to Workflows", use_container_width=True):
+            st.switch_page("pages/1_Workflows.py")
 
     with col2:
         st.markdown("### 📊 Visualize Data")
@@ -211,11 +218,11 @@ if st.session_state.connected:
 
     ### Features
 
-    #### 🚀 Job Manager
-    - **Apptainer Jobs**: Submit containerized jobs with custom resource allocations
-    - **Node Execution**: Run pre-configured pipeline nodes
-    - **Workflows**: Chain multiple jobs together with dependencies
-    - **Real-time Monitoring**: Check job status and progress
+    #### 🔄 Workflows
+    - **Pipeline Configuration**: Define which modules to run and their resource allocations per project
+    - **Manual Trigger**: Submit the configured pipeline immediately for selected subjects/sessions
+    - **Slurm Chaining**: Modules with dependencies are automatically chained with `afterok`
+    - **Pipeline Status**: Track job status per subject/session across all modules
 
     #### 📥 Download Data
     - **Smart File Browser**: Navigate remote directories with ease

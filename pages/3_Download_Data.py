@@ -11,7 +11,10 @@ if not st.session_state.get("connected", False) or not st.session_state.get("cli
     st.stop()
 
 client = st.session_state.client
-username = st.session_state.username
+
+if "_home_dir" not in st.session_state:
+    st.session_state["_home_dir"] = client._run("echo $HOME").strip()
+home_dir = st.session_state["_home_dir"]
 
 st.write("Download files and results from your HPC jobs.")
 
@@ -56,7 +59,7 @@ with col2:
     if selected_project:
         try:
             # List subdirectories in the project
-            project_path = f"/home/{username}/projects/{selected_project}"
+            project_path = f"{home_dir}/projects/{selected_project}"
             subdirs_result = client._run(f"ls -d {project_path}/*/ 2>/dev/null | xargs -n 1 basename")
             subdirs = [d.strip() for d in subdirs_result.splitlines() if d.strip()]
             
@@ -80,7 +83,7 @@ with col2:
 # FILE BROWSER
 # ============================================================================
 if selected_project and selected_subdir:
-    remote_output_dir = f"/home/{username}/projects/{selected_project}/{selected_subdir}/output"
+    remote_output_dir = f"{home_dir}/projects/{selected_project}/{selected_subdir}/output"
     
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -155,8 +158,8 @@ if remote_path:
     st.caption(f"📍 Remote: `{remote_path}`")
 
 # Local save path
-home_dir = os.path.expanduser("~")
-download_dir = os.path.join(home_dir, "Downloads")
+local_home = os.path.expanduser("~")
+download_dir = os.path.join(local_home, "Downloads")
 default_filename = os.path.basename(remote_path) if remote_path else "download"
 
 local_path = st.text_input(
