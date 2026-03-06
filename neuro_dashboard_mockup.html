@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeuroQC Dashboard — Design Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2230;
+    --surface3: #21283a;
+    --border: #2a3444;
+    --border-light: #374457;
+    --text: #cdd9e5;
+    --text-dim: #768a9e;
+    --text-faint: #4a5a6b;
+    --accent: #4fc3f7;
+    --accent2: #81c784;
+    --accent3: #ffb74d;
+    --warn: #f06292;
+    --purple: #9c6fde;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+    --serif: 'IBM Plex Serif', serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── LAYOUT SHELL ─── */
+  .shell {
+    display: grid;
+    grid-template-columns: 52px 1fr;
+    grid-template-rows: 44px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ─── TOP BAR ─── */
+  .topbar {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--text-dim); }
+  .topbar-subject {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .subject-badge {
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+  }
+  .topbar-nav {
+    display: flex;
+    gap: 2px;
+  }
+  .topbar-nav button {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-family: var(--sans);
+    font-size: 12px;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+  .topbar-nav button:hover { background: var(--surface3); color: var(--text); }
+  .topbar-nav button.active {
+    background: var(--surface3);
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+    border-radius: 4px 4px 0 0;
+  }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent2);
+    box-shadow: 0 0 6px var(--accent2);
+    display: inline-block;
+  }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+    gap: 4px;
+  }
+  .nav-icon {
+    width: 36px; height: 36px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--text-faint);
+    transition: all 0.15s;
+    position: relative;
+  }
+  .nav-icon:hover { background: var(--surface3); color: var(--text); }
+  .nav-icon.active { background: rgba(79,195,247,0.12); color: var(--accent); }
+  .nav-icon .tooltip {
+    position: absolute;
+    left: 44px;
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 200;
+    color: var(--text);
+  }
+  .nav-icon:hover .tooltip { opacity: 1; }
+  .nav-sep { width: 24px; height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* ─── MAIN CONTENT ─── */
+  .main {
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ─── PAGE SECTIONS ─── */
+  .page { display: none; flex-direction: column; gap: 16px; }
+  .page.active { display: flex; }
+
+  /* ─── PANELS ─── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface2);
+  }
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .panel-body { padding: 14px; }
+
+  /* ─── GRID LAYOUTS ─── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .grid-3-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+
+  /* ─── NORMATIVE CHART ─── */
+  .chart-container {
+    position: relative;
+    height: 240px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+    padding: 16px;
+  }
+  .chart-svg { width: 100%; height: 100%; }
+
+  /* ─── METRICS ROW ─── */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .metric-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 10px 12px;
+  }
+  .metric-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-faint);
+    margin-bottom: 4px;
+  }
+  .metric-value {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+  }
+  .metric-value.good { color: var(--accent2); }
+  .metric-value.warn { color: var(--accent3); }
+  .metric-value.bad { color: var(--warn); }
+  .metric-sub {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .metric-percentile {
+    margin-top: 6px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .metric-percentile-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent2);
+  }
+
+  /* ─── CLINICIAN PANEL ─── */
+  .feedback-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .feedback-section {
+    background: var(--surface2);
+    border-radius: 4px;
+    padding: 12px;
+  }
+  .feedback-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-faint);
+    margin-bottom: 8px;
+  }
+  .radio-group {
+    display: flex;
+    gap: 6px;
+  }
+  .radio-btn {
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 10px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .radio-btn:hover { border-color: var(--border-light); color: var(--text); }
+  .radio-btn.sel-good { border-color: var(--accent2); color: var(--accent2); background: rgba(129,199,132,0.08); }
+  .radio-btn.sel-warn { border-color: var(--accent3); color: var(--accent3); background: rgba(255,183,77,0.08); }
+  .radio-btn.sel-bad { border-color: var(--warn); color: var(--warn); background: rgba(240,98,146,0.08); }
+  .radio-btn.sel-hc { border-color: var(--accent); color: var(--accent); background: rgba(79,195,247,0.08); }
+  .radio-btn.sel-pat { border-color: var(--purple); color: var(--purple); background: rgba(156,111,222,0.08); }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .checkbox-row:hover { border-color: var(--border-light); }
+  .checkbox-row.checked { border-color: var(--accent2); }
+  .custom-check {
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    border: 1px solid var(--border-light);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    flex-shrink: 0;
+    background: var(--surface2);
+    transition: all 0.15s;
+  }
+  .checked .custom-check { background: var(--accent2); border-color: var(--accent2); color: #000; }
+  .checkbox-row span { font-size: 12px; color: var(--text-dim); }
+  .checked span { color: var(--text); }
+
+  textarea.notes {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 8px 10px;
+    resize: vertical;
+    min-height: 60px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  textarea.notes:focus { border-color: var(--accent); }
+  textarea.notes::placeholder { color: var(--text-faint); }
+
+  .save-btn {
+    width: 100%;
+    padding: 9px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .save-btn:hover { opacity: 0.85; }
+  .save-btn.secondary {
+    background: var(--surface3);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  /* ─── AUDIT TRAIL ─── */
+  .audit-log {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .audit-entry {
+    display: grid;
+    grid-template-columns: 120px 80px 1fr;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: start;
+    font-size: 11px;
+  }
+  .audit-entry:last-child { border-bottom: none; }
+  .audit-time { font-family: var(--mono); color: var(--text-faint); font-size: 10px; }
+  .audit-user { color: var(--accent); font-family: var(--mono); font-size: 10px; }
+  .audit-action { color: var(--text-dim); }
+  .audit-change { color: var(--accent3); font-family: var(--mono); font-size: 10px; }
+
+  /* ─── DATA TABLE ─── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .data-table th {
+    text-align: left;
+    padding: 6px 10px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 500;
+    position: sticky;
+    top: 0;
+  }
+  .data-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  .data-table tr:hover td { background: var(--surface2); }
+  .data-table tr.selected td { background: rgba(79,195,247,0.06); }
+  .data-table .missing {
+    color: var(--warn);
+    font-style: italic;
+  }
+  .data-table .editable {
+    cursor: pointer;
+    border-bottom: 1px dashed var(--border-light);
+  }
+  .data-table .editable:hover { border-bottom-color: var(--accent); color: var(--accent); }
+  .tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 600;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .tag-good { background: rgba(129,199,132,0.15); color: var(--accent2); }
+  .tag-warn { background: rgba(255,183,77,0.15); color: var(--accent3); }
+  .tag-miss { background: rgba(240,98,146,0.15); color: var(--warn); }
+  .tag-hc { background: rgba(79,195,247,0.15); color: var(--accent); }
+  .tag-pat { background: rgba(156,111,222,0.15); color: var(--purple); }
+
+  /* ─── QC VIEWER ─── */
+  .qc-viewer {
+    display: grid;
+    grid-template-columns: 1fr 220px;
+    gap: 12px;
+  }
+  .nifti-display {
+    background: #000;
+    border-radius: 5px;
+    aspect-ratio: 3/1;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1px;
+    overflow: hidden;
+  }
+  .nifti-plane {
+    background: #050a0e;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .nifti-plane svg { width: 100%; height: 100%; }
+  .plane-label {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    z-index: 10;
+  }
+  .slice-info {
+    position: absolute;
+    bottom: 6px;
+    right: 8px;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: rgba(255,255,255,0.3);
+  }
+  .crosshair-h, .crosshair-v {
+    position: absolute;
+    background: rgba(79,195,247,0.35);
+    pointer-events: none;
+  }
+  .crosshair-h { width: 100%; height: 1px; top: 50%; }
+  .crosshair-v { width: 1px; height: 100%; left: 50%; }
+
+  .qc-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .slider-group {
+    background: var(--surface2);
+    border-radius: 4px;
+    padding: 10px;
+  }
+  .slider-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-faint);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .slider-val {
+    color: var(--accent);
+  }
+  input[type=range] {
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+
+  .qc-rating-btns {
+    display: flex;
+    gap: 6px;
+  }
+  .qc-rating-btns button {
+    flex: 1;
+    padding: 8px 4px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    text-align: center;
+    text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .qc-rating-btns button:hover { border-color: var(--border-light); color: var(--text); }
+  .qc-pass { border-color: var(--accent2) !important; color: var(--accent2) !important; background: rgba(129,199,132,0.1) !important; }
+  .qc-fail { border-color: var(--warn) !important; color: var(--warn) !important; background: rgba(240,98,146,0.1) !important; }
+  .qc-uncertain { border-color: var(--accent3) !important; color: var(--accent3) !important; background: rgba(255,183,77,0.1) !important; }
+
+  /* ─── OVERLAY TOGGLE ─── */
+  .overlay-toggle {
+    display: flex;
+    gap: 4px;
+    background: var(--surface2);
+    border-radius: 4px;
+    padding: 3px;
+  }
+  .overlay-btn {
+    flex: 1;
+    padding: 4px 6px;
+    border-radius: 3px;
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+  }
+  .overlay-btn.active { background: var(--surface3); color: var(--accent); }
+
+  /* ─── SUBJECT NAVIGATOR ─── */
+  .subject-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-arrow {
+    width: 24px; height: 24px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+  }
+  .nav-arrow:hover { border-color: var(--accent); color: var(--accent); }
+  .nav-progress {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .nav-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--purple));
+    border-radius: 2px;
+    width: 34%;
+  }
+  .nav-count { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+
+  /* ─── SECTION DIVIDER ─── */
+  .section-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-faint);
+    padding: 0 2px;
+    margin-bottom: -4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ─── INLINE EDIT ─── */
+  .edit-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+  }
+  .edit-modal.show { display: flex; }
+  .edit-box {
+    background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 20px;
+    width: 340px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  }
+  .edit-box h3 {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .edit-box p { font-size: 11px; color: var(--text-dim); margin-bottom: 12px; }
+  .edit-field {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 8px 10px;
+    outline: none;
+    margin-bottom: 8px;
+  }
+  .edit-field:focus { border-color: var(--accent); }
+  .edit-reason {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 11px;
+    padding: 8px 10px;
+    outline: none;
+    margin-bottom: 12px;
+    resize: vertical;
+    min-height: 50px;
+  }
+  .edit-reason:focus { border-color: var(--accent); }
+  .edit-reason::placeholder { color: var(--text-faint); }
+  .edit-btns { display: flex; gap: 8px; }
+  .edit-btns button {
+    flex: 1;
+    padding: 8px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface3);
+    color: var(--text-dim);
+    transition: all 0.15s;
+  }
+  .edit-btns button.primary {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+  .edit-btns button.primary:hover { opacity: 0.85; }
+
+  /* ─── SUMMARY CHIPS ─── */
+  .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid;
+  }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+  /* ─── DESIGN NOTE OVERLAYS ─── */
+  .design-note {
+    position: relative;
+  }
+  .design-note::before {
+    content: attr(data-note);
+    position: absolute;
+    right: -220px;
+    top: 0;
+    width: 200px;
+    background: rgba(255,183,77,0.08);
+    border: 1px solid rgba(255,183,77,0.2);
+    border-left: 3px solid var(--accent3);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--accent3);
+    line-height: 1.5;
+    z-index: 50;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .design-note:hover::before { opacity: 1; }
+
+  /* ANIMATION */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .page.active { animation: fadeIn 0.2s ease; }
+
+  /* ─── SEGMENTATION COLOURS ─── */
+  .seg-legend { display: flex; flex-direction: column; gap: 5px; }
+  .seg-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-dim); }
+  .seg-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="logo">Neuro<span>QC</span></div>
+    <div style="width:1px;height:24px;background:var(--border)"></div>
+    <nav class="topbar-nav">
+      <button class="active" onclick="showPage('overview')">📊 Overview</button>
+      <button onclick="showPage('qc')">🔬 QC Viewer</button>
+      <button onclick="showPage('data')">🗄 Data Table</button>
+      <button onclick="showPage('audit')">📋 Audit Log</button>
+    </nav>
+    <div class="topbar-subject" style="margin-left:auto;gap:14px;">
+      <span class="status-dot"></span>
+      <span style="font-size:11px;color:var(--text-dim)">Session active</span>
+      <div style="width:1px;height:20px;background:var(--border)"></div>
+      <span style="font-size:11px;color:var(--text-dim)">Project:</span>
+      <span class="subject-badge">CAMCAN_2024</span>
+      <div style="width:1px;height:20px;background:var(--border)"></div>
+      <span style="font-size:11px;color:var(--text-dim)">Subject:</span>
+      <span class="subject-badge">sub-CC110033</span>
+    </div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="nav-icon active" onclick="showPage('overview')">📊<span class="tooltip">Overview</span></div>
+    <div class="nav-icon" onclick="showPage('qc')">🔬<span class="tooltip">QC Viewer</span></div>
+    <div class="nav-icon" onclick="showPage('data')">🗄<span class="tooltip">Data Table</span></div>
+    <div class="nav-icon" onclick="showPage('audit')">📋<span class="tooltip">Audit Log</span></div>
+    <div class="nav-sep"></div>
+    <div class="nav-icon">⚙️<span class="tooltip">Settings</span></div>
+    <div class="nav-icon">❓<span class="tooltip">Help</span></div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- PAGE 1: OVERVIEW                            -->
+    <!-- ═══════════════════════════════════════════ -->
+    <div class="page active" id="page-overview">
+
+      <!-- Subject nav strip -->
+      <div class="panel" style="overflow:hidden">
+        <div class="subject-nav">
+          <div class="nav-arrow">‹</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">12 / 34</div>
+          <div class="nav-progress"><div class="nav-progress-fill"></div></div>
+          <div class="nav-count">34 subjects · 8 pending QC</div>
+          <div class="nav-arrow">›</div>
+          <div style="margin-left:8px">
+            <button style="padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer">Jump to subject</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metrics row -->
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="metric-label">Total ICV (ml)</div>
+          <div class="metric-value good">1,483</div>
+          <div class="metric-sub">z = +0.42</div>
+          <div class="metric-percentile"><div class="metric-percentile-fill" style="width:66%"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Left Hippocampus</div>
+          <div class="metric-value warn">3,241</div>
+          <div class="metric-sub">z = −1.21 · 18th pct</div>
+          <div class="metric-percentile"><div class="metric-percentile-fill" style="width:18%;background:var(--accent3)"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Right Hippocampus</div>
+          <div class="metric-value good">3,589</div>
+          <div class="metric-sub">z = −0.33 · 37th pct</div>
+          <div class="metric-percentile"><div class="metric-percentile-fill" style="width:37%"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">WM Hyperintensities</div>
+          <div class="metric-value bad">12.4</div>
+          <div class="metric-sub">z = +2.18 · 97th pct</div>
+          <div class="metric-percentile"><div class="metric-percentile-fill" style="width:97%;background:var(--warn)"></div></div>
+        </div>
+      </div>
+
+      <!-- Chart + Clinician panel -->
+      <div class="grid-3-1">
+
+        <!-- Normative Chart -->
+        <div class="panel design-note" data-note="Select measure via dropdown or tabs above chart. Hover shows subject position + exact z-score tooltip.">
+          <div class="panel-header">
+            <span class="panel-title">Normative Distribution</span>
+            <div style="margin-left:auto;display:flex;gap:6px">
+              <select style="background:var(--surface3);border:1px solid var(--border);color:var(--text-dim);font-family:var(--mono);font-size:10px;padding:3px 6px;border-radius:3px;outline:none;">
+                <option>Left Hippocampus</option>
+                <option>Right Hippocampus</option>
+                <option>Total ICV</option>
+                <option>WM Hyperintensities</option>
+              </select>
+              <select style="background:var(--surface3);border:1px solid var(--border);color:var(--text-dim);font-family:var(--mono);font-size:10px;padding:3px 6px;border-radius:3px;outline:none;">
+                <option>Age-matched</option>
+                <option>Full sample</option>
+                <option>Sex-matched</option>
+              </select>
+            </div>
+          </div>
+          <div class="panel-body" style="padding:12px">
+            <div class="chart-container">
+              <svg class="chart-svg" viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg">
+                <!-- Grid lines -->
+                <line x1="40" y1="10" x2="40" y2="170" stroke="#2a3444" stroke-width="1"/>
+                <line x1="40" y1="170" x2="590" y2="170" stroke="#2a3444" stroke-width="1"/>
+                <line x1="40" y1="50" x2="590" y2="50" stroke="#1c2230" stroke-width="1" stroke-dasharray="3,3"/>
+                <line x1="40" y1="90" x2="590" y2="90" stroke="#1c2230" stroke-width="1" stroke-dasharray="3,3"/>
+                <line x1="40" y1="130" x2="590" y2="130" stroke="#1c2230" stroke-width="1" stroke-dasharray="3,3"/>
+                <!-- Y axis labels -->
+                <text x="34" y="173" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="end">2500</text>
+                <text x="34" y="133" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="end">3000</text>
+                <text x="34" y="93" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="end">3500</text>
+                <text x="34" y="53" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="end">4000</text>
+                <!-- X axis labels -->
+                <text x="80" y="184" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="middle">20</text>
+                <text x="170" y="184" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="middle">35</text>
+                <text x="260" y="184" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="middle">50</text>
+                <text x="350" y="184" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="middle">65</text>
+                <text x="440" y="184" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="middle">75</text>
+                <text x="530" y="184" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="middle">85</text>
+                <!-- Normative band (2SD) -->
+                <path d="M60,30 Q200,22 320,40 Q420,58 560,80 L560,145 Q420,125 320,110 Q200,92 60,100 Z"
+                      fill="rgba(79,195,247,0.07)" stroke="none"/>
+                <!-- Normative band (1SD) -->
+                <path d="M60,48 Q200,42 320,58 Q420,72 560,95 L560,128 Q420,108 320,93 Q200,78 60,83 Z"
+                      fill="rgba(79,195,247,0.1)" stroke="none"/>
+                <!-- Mean line -->
+                <path d="M60,65 Q200,62 320,75 Q420,90 560,111"
+                      fill="none" stroke="rgba(79,195,247,0.4)" stroke-width="1.5"/>
+                <!-- ±1SD labels -->
+                <text x="565" y="98" fill="rgba(79,195,247,0.4)" font-size="7" font-family="IBM Plex Mono">+1SD</text>
+                <text x="565" y="126" fill="rgba(79,195,247,0.4)" font-size="7" font-family="IBM Plex Mono">−1SD</text>
+                <!-- Scatter dots (normative sample) -->
+                <circle cx="95" cy="72" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="115" cy="58" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="130" cy="85" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="155" cy="62" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="175" cy="70" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="190" cy="48" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="210" cy="78" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="235" cy="65" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="255" cy="82" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="280" cy="58" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="305" cy="92" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="325" cy="68" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="345" cy="88" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="365" cy="78" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="390" cy="98" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="415" cy="85" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="440" cy="108" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="460" cy="95" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="480" cy="115" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="510" cy="105" r="3" fill="rgba(79,195,247,0.3)"/>
+                <circle cx="535" cy="120" r="3" fill="rgba(79,195,247,0.3)"/>
+                <!-- SUBJECT DOT — highlighted -->
+                <circle cx="295" cy="118" r="7" fill="rgba(255,183,77,0.2)" stroke="var(--accent3)" stroke-width="1.5"/>
+                <circle cx="295" cy="118" r="3.5" fill="var(--accent3)"/>
+                <!-- Subject label -->
+                <line x1="295" y1="111" x2="295" y2="75" stroke="rgba(255,183,77,0.4)" stroke-width="1" stroke-dasharray="2,2"/>
+                <rect x="245" y="60" width="100" height="20" rx="3" fill="var(--surface2)" stroke="rgba(255,183,77,0.3)" stroke-width="1"/>
+                <text x="295" y="72" fill="var(--accent3)" font-size="8" font-family="IBM Plex Mono" text-anchor="middle">sub-CC110033</text>
+                <text x="295" y="80" fill="rgba(255,183,77,0.6)" font-size="7" font-family="IBM Plex Mono" text-anchor="middle">z = −1.21 · 3241mm³</text>
+                <!-- Axis label -->
+                <text x="315" y="196" fill="#4a5a6b" font-size="8" font-family="IBM Plex Mono" text-anchor="middle">Age (years)</text>
+              </svg>
+            </div>
+            <div style="margin-top:8px;display:flex;gap:12px;align-items:center">
+              <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-dim)">
+                <div style="width:8px;height:8px;border-radius:50%;background:rgba(79,195,247,0.4)"></div>Normative sample (n=198)
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-dim)">
+                <div style="width:8px;height:8px;border-radius:50%;background:var(--accent3)"></div>This subject
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-dim)">
+                <div style="width:16px;height:4px;border-radius:1px;background:rgba(79,195,247,0.15)"></div>±2SD band
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Clinician Feedback Panel -->
+        <div class="panel design-note" data-note="All feedback autosaved per subject. Normative inclusion gated on QC=Pass AND Group=HC.">
+          <div class="panel-header">
+            <span class="panel-title">Clinician Feedback</span>
+          </div>
+          <div class="panel-body feedback-grid">
+
+            <div class="feedback-section">
+              <div class="feedback-label">Data Quality</div>
+              <div class="radio-group">
+                <div class="radio-btn sel-good" onclick="selectRadio(this,'quality')">✓ Pass</div>
+                <div class="radio-btn" onclick="selectRadio(this,'quality')">? Uncertain</div>
+                <div class="radio-btn" onclick="selectRadio(this,'quality')">✗ Fail</div>
+              </div>
+            </div>
+
+            <div class="feedback-section">
+              <div class="feedback-label">Group</div>
+              <div class="radio-group">
+                <div class="radio-btn sel-hc" onclick="selectRadio(this,'group')">HC</div>
+                <div class="radio-btn" onclick="selectRadio(this,'group')">Patient</div>
+                <div class="radio-btn" onclick="selectRadio(this,'group')">Unclear</div>
+              </div>
+            </div>
+
+            <div class="feedback-section">
+              <div class="feedback-label">Diagnosis</div>
+              <select style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:6px 8px;border-radius:4px;outline:none;">
+                <option value="">— not set —</option>
+                <option>Healthy Control</option>
+                <option>MCI</option>
+                <option>Alzheimer's Disease</option>
+                <option>Parkinson's Disease</option>
+                <option>Other</option>
+              </select>
+            </div>
+
+            <div class="checkbox-row checked" id="norm-checkbox">
+              <div class="custom-check">✓</div>
+              <span>Add to normative sample</span>
+            </div>
+            <div style="font-size:10px;color:var(--text-faint);padding:0 2px;margin-top:-6px">
+              Requires QC = Pass AND Group = HC
+            </div>
+
+            <div>
+              <div class="feedback-label" style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-faint);margin-bottom:5px">Notes</div>
+              <textarea class="notes" placeholder="Optional clinical notes..."></textarea>
+            </div>
+
+            <button class="save-btn">Save Feedback</button>
+            <button class="save-btn secondary" onclick="showPage('qc')">→ Open QC Viewer</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- PAGE 2: QC VIEWER                           -->
+    <!-- ═══════════════════════════════════════════ -->
+    <div class="page" id="page-qc">
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">NIfTI QC Viewer</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-faint);margin-left:8px">sub-CC110033 · T1w + aparc+aseg</span>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <div class="overlay-toggle">
+              <button class="overlay-btn active">T1</button>
+              <button class="overlay-btn">Seg</button>
+              <button class="overlay-btn">Both</button>
+            </div>
+            <button style="padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer">Load Files</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="qc-viewer">
+
+            <!-- Three-plane viewer -->
+            <div>
+              <div class="nifti-display">
+                <!-- Axial plane -->
+                <div class="nifti-plane">
+                  <div class="plane-label">Axial</div>
+                  <div class="crosshair-h"></div>
+                  <div class="crosshair-v"></div>
+                  <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Brain silhouette -->
+                    <ellipse cx="100" cy="100" rx="75" ry="80" fill="#1a2a1a" stroke="#2a4a2a" stroke-width="1"/>
+                    <ellipse cx="100" cy="100" rx="65" ry="70" fill="#1e341e" stroke="none"/>
+                    <!-- Cortex folds suggestion -->
+                    <path d="M40,90 Q55,75 70,88 Q85,100 95,85 Q108,70 120,85 Q132,100 148,88 Q162,76 170,90" stroke="#2d4a2d" fill="none" stroke-width="1.5"/>
+                    <path d="M45,110 Q60,95 75,108 Q90,122 102,107 Q115,92 128,107 Q141,122 158,110" stroke="#2d4a2d" fill="none" stroke-width="1.5"/>
+                    <!-- Segmentation overlay (hippocampus ROI) -->
+                    <ellipse cx="78" cy="115" rx="12" ry="8" fill="rgba(79,195,247,0.5)" stroke="#4fc3f7" stroke-width="1"/>
+                    <ellipse cx="122" cy="115" rx="12" ry="8" fill="rgba(255,183,77,0.45)" stroke="var(--accent3)" stroke-width="1"/>
+                    <!-- Ventricles -->
+                    <ellipse cx="92" cy="95" rx="8" ry="10" fill="rgba(30,80,120,0.8)"/>
+                    <ellipse cx="108" cy="95" rx="8" ry="10" fill="rgba(30,80,120,0.8)"/>
+                  </svg>
+                  <div class="slice-info">z = 72</div>
+                </div>
+                <!-- Coronal plane -->
+                <div class="nifti-plane">
+                  <div class="plane-label">Coronal</div>
+                  <div class="crosshair-h"></div>
+                  <div class="crosshair-v"></div>
+                  <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                    <ellipse cx="100" cy="95" rx="72" ry="78" fill="#1a2a1a" stroke="#2a4a2a" stroke-width="1"/>
+                    <ellipse cx="100" cy="95" rx="62" ry="68" fill="#1e341e"/>
+                    <path d="M42,80 Q58,65 74,80 Q90,94 100,78 Q110,62 126,78 Q142,94 158,80" stroke="#2d4a2d" fill="none" stroke-width="1.5"/>
+                    <!-- Hippocampus -->
+                    <ellipse cx="72" cy="128" rx="10" ry="14" fill="rgba(79,195,247,0.5)" stroke="#4fc3f7" stroke-width="1"/>
+                    <ellipse cx="128" cy="128" rx="10" ry="14" fill="rgba(255,183,77,0.45)" stroke="var(--accent3)" stroke-width="1"/>
+                    <!-- Cerebellum suggestion -->
+                    <ellipse cx="100" cy="168" rx="35" ry="18" fill="#162416" stroke="#2d4a2d" stroke-width="1"/>
+                    <!-- Brainstem -->
+                    <rect x="90" y="145" width="20" height="25" rx="4" fill="#1a2e1a"/>
+                  </svg>
+                  <div class="slice-info">y = −18</div>
+                </div>
+                <!-- Sagittal plane -->
+                <div class="nifti-plane">
+                  <div class="plane-label">Sagittal</div>
+                  <div class="crosshair-h"></div>
+                  <div class="crosshair-v"></div>
+                  <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                    <ellipse cx="105" cy="88" rx="75" ry="72" fill="#1a2a1a" stroke="#2a4a2a" stroke-width="1"/>
+                    <ellipse cx="105" cy="88" rx="65" ry="62" fill="#1e341e"/>
+                    <!-- Corpus callosum -->
+                    <path d="M60,82 Q100,70 145,82" stroke="#3d5a3d" fill="none" stroke-width="3"/>
+                    <!-- Folds -->
+                    <path d="M45,70 Q65,55 85,68 Q105,80 125,65 Q145,50 162,65" stroke="#2d4a2d" fill="none" stroke-width="1.5"/>
+                    <!-- Hippocampus (left side) -->
+                    <ellipse cx="105" cy="128" rx="18" ry="10" fill="rgba(79,195,247,0.5)" stroke="#4fc3f7" stroke-width="1"/>
+                    <!-- Cerebellum -->
+                    <ellipse cx="105" cy="158" rx="42" ry="24" fill="#162416" stroke="#2d4a2d" stroke-width="1"/>
+                    <!-- Brainstem -->
+                    <rect x="94" y="138" width="22" height="28" rx="4" fill="#1a2e1a"/>
+                  </svg>
+                  <div class="slice-info">x = −28</div>
+                </div>
+              </div>
+
+              <!-- Slice sliders -->
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
+                <div class="slider-group">
+                  <div class="slider-label">Axial (z) <span class="slider-val">72</span></div>
+                  <input type="range" min="0" max="180" value="72">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label">Coronal (y) <span class="slider-val">−18</span></div>
+                  <input type="range" min="-90" max="90" value="-18">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label">Sagittal (x) <span class="slider-val">−28</span></div>
+                  <input type="range" min="-90" max="90" value="-28">
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+                <div class="slider-group">
+                  <div class="slider-label">T1 Intensity <span class="slider-val">0.8</span></div>
+                  <input type="range" min="0" max="100" value="80">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label">Overlay Opacity <span class="slider-val">0.55</span></div>
+                  <input type="range" min="0" max="100" value="55">
+                </div>
+              </div>
+            </div>
+
+            <!-- QC Controls sidebar -->
+            <div class="qc-controls">
+              <div class="panel-header" style="border-radius:4px 4px 0 0;margin:-1px -1px 0 -1px">
+                <span class="panel-title">QC Rating</span>
+              </div>
+
+              <div class="qc-rating-btns">
+                <button class="qc-pass">✓ Pass</button>
+                <button class="qc-uncertain">? Unsure</button>
+                <button class="qc-fail">✗ Fail</button>
+              </div>
+
+              <div class="slider-group">
+                <div class="feedback-label">Failure Modes</div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);cursor:pointer"><input type="checkbox" style="accent-color:var(--warn)"> Motion artefact</label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);cursor:pointer"><input type="checkbox" style="accent-color:var(--warn)"> Incomplete FOV</label>
+                  <label style="display:flex;align-items:center;gap=6px;font-size:11px;color:var(--text-dim);cursor:pointer"><input type="checkbox" style="accent-color:var(--warn)"> Seg mismatch</label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);cursor:pointer"><input type="checkbox" style="accent-color:var(--warn)"> Signal dropout</label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);cursor:pointer"><input type="checkbox" style="accent-color:var(--warn)"> Other</label>
+                </div>
+              </div>
+
+              <div>
+                <div class="feedback-label" style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-faint);margin-bottom:5px">QC Notes</div>
+                <textarea class="notes" placeholder="Describe any issues..." style="min-height:70px"></textarea>
+              </div>
+
+              <div style="background:var(--surface2);border-radius:4px;padding:10px">
+                <div class="feedback-label" style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-faint);margin-bottom:8px">Segmentation Legend</div>
+                <div class="seg-legend">
+                  <div class="seg-item"><div class="seg-swatch" style="background:rgba(79,195,247,0.7)"></div>L. Hippocampus</div>
+                  <div class="seg-item"><div class="seg-swatch" style="background:rgba(255,183,77,0.65)"></div>R. Hippocampus</div>
+                  <div class="seg-item"><div class="seg-swatch" style="background:rgba(129,199,132,0.65)"></div>Amygdala</div>
+                  <div class="seg-item"><div class="seg-swatch" style="background:rgba(156,111,222,0.65)"></div>Thalamus</div>
+                  <div class="seg-item"><div class="seg-swatch" style="background:rgba(240,98,146,0.65)"></div>Caudate</div>
+                </div>
+              </div>
+
+              <button class="save-btn" style="margin-top:auto">Save QC</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- PAGE 3: DATA TABLE                          -->
+    <!-- ═══════════════════════════════════════════ -->
+    <div class="page" id="page-data">
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Dataset</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-faint);margin-left:8px">CAMCAN_2024 · 34 subjects</span>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <div style="display:flex;gap:4px">
+              <span class="chip" style="border-color:var(--warn);color:var(--warn)">3 missing fields</span>
+              <span class="chip" style="border-color:var(--accent2);color:var(--accent2)">8 QC pass</span>
+              <span class="chip" style="border-color:var(--text-faint);color:var(--text-faint)">12 pending</span>
+            </div>
+            <button style="padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer">Export CSV</button>
+          </div>
+        </div>
+        <div style="overflow:auto;max-height:420px">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Subject ID</th>
+                <th>Age</th>
+                <th>Sex</th>
+                <th>Diagnosis</th>
+                <th>Group</th>
+                <th>QC Status</th>
+                <th>Norm Sample</th>
+                <th>L.Hipp (mm³)</th>
+                <th>R.Hipp (mm³)</th>
+                <th>ICV (ml)</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="selected">
+                <td style="color:var(--accent);font-family:var(--mono)">sub-CC110033</td>
+                <td class="editable" onclick="openEdit('Age','52')">52</td>
+                <td>F</td>
+                <td>HC</td>
+                <td><span class="tag tag-hc">HC</span></td>
+                <td><span class="tag tag-good">Pass</span></td>
+                <td><span class="tag tag-good">✓ Yes</span></td>
+                <td style="color:var(--accent3)">3,241</td>
+                <td>3,589</td>
+                <td>1,483</td>
+                <td><button onclick="showPage('overview')" style="padding:2px 8px;border-radius:3px;border:1px solid var(--border);background:none;color:var(--accent);font-family:var(--mono);font-size:9px;cursor:pointer">View</button></td>
+              </tr>
+              <tr>
+                <td style="font-family:var(--mono)">sub-CC110045</td>
+                <td class="editable missing" onclick="openEdit('Age','')">—</td>
+                <td>M</td>
+                <td>—</td>
+                <td><span class="tag tag-hc">HC</span></td>
+                <td><span class="tag tag-warn">Unsure</span></td>
+                <td><span class="tag tag-miss">No</span></td>
+                <td>3,802</td>
+                <td>3,756</td>
+                <td>1,512</td>
+                <td><button style="padding:2px 8px;border-radius:3px;border:1px solid var(--border);background:none;color:var(--text-dim);font-family:var(--mono);font-size:9px;cursor:pointer">View</button></td>
+              </tr>
+              <tr>
+                <td style="font-family:var(--mono)">sub-CC120061</td>
+                <td class="editable" onclick="openEdit('Age','38')">38</td>
+                <td class="editable missing" onclick="openEdit('Sex','')">—</td>
+                <td>HC</td>
+                <td><span class="tag tag-hc">HC</span></td>
+                <td><span class="tag tag-miss">Fail</span></td>
+                <td><span class="tag tag-miss">No</span></td>
+                <td>3,524</td>
+                <td>3,611</td>
+                <td>1,395</td>
+                <td><button style="padding:2px 8px;border-radius:3px;border:1px solid var(--border);background:none;color:var(--text-dim);font-family:var(--mono);font-size:9px;cursor:pointer">View</button></td>
+              </tr>
+              <tr>
+                <td style="font-family:var(--mono)">sub-CC210148</td>
+                <td class="editable" onclick="openEdit('Age','64')">64</td>
+                <td>M</td>
+                <td>MCI</td>
+                <td><span class="tag tag-pat">Patient</span></td>
+                <td><span class="tag tag-good">Pass</span></td>
+                <td><span class="tag tag-miss">No</span></td>
+                <td>2,891</td>
+                <td>2,944</td>
+                <td>1,621</td>
+                <td><button style="padding:2px 8px;border-radius:3px;border:1px solid var(--border);background:none;color:var(--text-dim);font-family:var(--mono);font-size:9px;cursor:pointer">View</button></td>
+              </tr>
+              <tr>
+                <td style="font-family:var(--mono)">sub-CC220518</td>
+                <td class="editable" onclick="openEdit('Age','71')">71</td>
+                <td>F</td>
+                <td>AD</td>
+                <td><span class="tag tag-pat">Patient</span></td>
+                <td><span class="tag tag-good">Pass</span></td>
+                <td><span class="tag tag-miss">No</span></td>
+                <td>2,412</td>
+                <td>2,358</td>
+                <td>1,298</td>
+                <td><button style="padding:2px 8px;border-radius:3px;border:1px solid var(--border);background:none;color:var(--text-dim);font-family:var(--mono);font-size:9px;cursor:pointer">View</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="padding:10px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--text-faint);font-family:var(--mono)">
+          Click any <span style="color:var(--accent3)">underlined</span> cell to edit (audit trail kept). Missing values shown as <span style="color:var(--warn)">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- PAGE 4: AUDIT LOG                           -->
+    <!-- ═══════════════════════════════════════════ -->
+    <div class="page" id="page-audit">
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Audit Trail</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-faint);margin-left:8px">All edits are immutable and timestamped</span>
+          <div style="margin-left:auto">
+            <button style="padding:4px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer">Export Log</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:120px 80px 80px 1fr 120px;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-faint)">Timestamp</span>
+            <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-faint)">User</span>
+            <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-faint)">Subject</span>
+            <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-faint)">Change</span>
+            <span style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-faint)">Reason</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:120px 80px 80px 1fr 120px;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);align-items:start">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text-faint)">2024-11-14 09:32</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--accent)">n.doyle</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text)">CC110045</span>
+            <span style="font-size:11px;color:var(--text-dim)">Age: <span style="color:var(--warn)">missing</span> → <span style="color:var(--accent2)">47</span></span>
+            <span style="font-size:10px;color:var(--text-dim)">Checked original consent form</span>
+          </div>
+          <div style="display:grid;grid-template-columns:120px 80px 80px 1fr 120px;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);align-items:start">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text-faint)">2024-11-14 09:28</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--accent)">n.doyle</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text)">CC110033</span>
+            <span style="font-size:11px;color:var(--text-dim)">QC Status: <span style="color:var(--accent3)">Unsure</span> → <span style="color:var(--accent2)">Pass</span></span>
+            <span style="font-size:10px;color:var(--text-dim)">Motion acceptable on review</span>
+          </div>
+          <div style="display:grid;grid-template-columns:120px 80px 80px 1fr 120px;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);align-items:start">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text-faint)">2024-11-13 16:55</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--accent)">n.doyle</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text)">CC120061</span>
+            <span style="font-size:11px;color:var(--text-dim)">Added to normative sample: <span style="color:var(--accent2)">true</span></span>
+            <span style="font-size:10px;color:var(--text-dim)">QC passed, confirmed HC</span>
+          </div>
+          <div style="display:grid;grid-template-columns:120px 80px 80px 1fr 120px;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);align-items:start">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text-faint)">2024-11-13 14:20</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--purple)">j.smith</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text)">CC210148</span>
+            <span style="font-size:11px;color:var(--text-dim)">Diagnosis: <span style="color:var(--text-faint)">—</span> → <span style="color:var(--accent3)">MCI</span></span>
+            <span style="font-size:10px;color:var(--text-dim)">Clinical notes confirmed</span>
+          </div>
+          <div style="display:grid;grid-template-columns:120px 80px 80px 1fr 120px;gap:10px;padding:8px 0;align-items:start">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text-faint)">2024-11-12 11:04</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--purple)">j.smith</span>
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text)">CC120061</span>
+            <span style="font-size:11px;color:var(--text-dim)">Sex: <span style="color:var(--warn)">missing</span> → <span style="color:var(--accent2)">F</span></span>
+            <span style="font-size:10px;color:var(--text-dim)">Demographic spreadsheet cross-ref</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ─── EDIT MODAL ─── -->
+<div class="edit-modal" id="editModal">
+  <div class="edit-box">
+    <h3>Edit field: <span id="editFieldName"></span></h3>
+    <p>This change will be recorded in the audit trail with your name and timestamp.</p>
+    <input class="edit-field" id="editFieldValue" type="text" placeholder="New value">
+    <textarea class="edit-reason" placeholder="Reason for change (required) — e.g. 'Checked original consent form'"></textarea>
+    <div class="edit-btns">
+      <button onclick="closeEdit()">Cancel</button>
+      <button class="primary" onclick="closeEdit()">Save Change</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.topbar-nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.nav-icon').forEach(n => n.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+
+    const map = { overview: 0, qc: 1, data: 2, audit: 3 };
+    const btns = document.querySelectorAll('.topbar-nav button');
+    const icons = document.querySelectorAll('.nav-icon');
+    if (map[name] !== undefined) {
+      btns[map[name]]?.classList.add('active');
+      icons[map[name]]?.classList.add('active');
+    }
+  }
+
+  function selectRadio(el, group) {
+    el.closest('.radio-group').querySelectorAll('.radio-btn').forEach(b => {
+      b.className = 'radio-btn';
+    });
+    if (group === 'quality') {
+      if (el.textContent.includes('Pass')) el.classList.add('sel-good');
+      else if (el.textContent.includes('Uncertain')) el.classList.add('sel-warn');
+      else el.classList.add('sel-bad');
+    } else if (group === 'group') {
+      if (el.textContent === 'HC') el.classList.add('sel-hc');
+      else if (el.textContent === 'Patient') el.classList.add('sel-pat');
+      else el.classList.add('sel-warn');
+    }
+  }
+
+  function openEdit(field, val) {
+    document.getElementById('editFieldName').textContent = field;
+    document.getElementById('editFieldValue').value = val || '';
+    document.getElementById('editModal').classList.add('show');
+    setTimeout(() => document.getElementById('editFieldValue').focus(), 50);
+  }
+
+  function closeEdit() {
+    document.getElementById('editModal').classList.remove('show');
+  }
+
+  document.getElementById('editModal').addEventListener('click', function(e) {
+    if (e.target === this) closeEdit();
+  });
+
+  // Range slider labels
+  document.querySelectorAll('input[type=range]').forEach(s => {
+    s.addEventListener('input', function() {
+      const label = this.closest('.slider-group')?.querySelector('.slider-val');
+      if (label) label.textContent = this.value;
+    });
+  });
+
+  // Overlay buttons
+  document.querySelectorAll('.overlay-btn').forEach(b => {
+    b.addEventListener('click', function() {
+      this.closest('.overlay-toggle').querySelectorAll('.overlay-btn').forEach(x => x.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

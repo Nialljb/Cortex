@@ -1,15 +1,14 @@
-# 🧠 HPC Slurm Job Manager
+# 🧠 Cortex
 
-A comprehensive Streamlit-based interface for managing high-performance computing jobs on Slurm clusters. This application provides an intuitive web interface for submitting jobs, monitoring execution, downloading results, and visualizing data from your HPC environment.
+A Streamlit-based interface for managing HPC neuroimaging workflows on Slurm clusters. Cortex provides project-scoped pipeline configuration and status monitoring, plus data download and visualization tools.
 
 ## Features
 
-### 🚀 Job Manager
-- **Apptainer Jobs**: Submit containerized jobs with custom resource allocations (CPU, memory, GPU)
-- **Node Execution**: Run pre-configured pipeline nodes with standardized configurations
-- **Workflows**: Chain multiple jobs together with dependencies for complex pipelines
-- **Real-time Monitoring**: Check job status and progress with live updates
-- **Job History**: Track all submitted jobs and their outcomes
+### 🔄 Workflows
+- **Pipeline Configuration**: Select modules and resource allocations per project
+- **Dependency Ordering**: Enforce upstream/downstream module relationships
+- **Pipeline Status**: Monitor per-subject/session module states
+- **Auto-trigger Compatible**: Saved configs are consumed by the external trigger script
 
 ### 📥 Download Data
 - **Smart File Browser**: Navigate remote directories with an intuitive interface
@@ -74,33 +73,18 @@ streamlit run Home.py
 
 ### Submitting Jobs
 
-#### Apptainer Container Jobs
+#### Configuring Workflows
 
-1. Navigate to **Job Manager**
-2. Select the **Apptainer Jobs** tab
-3. Configure your job:
-   - Container image path on the HPC cluster
-   - Command to run inside the container
-   - Resource requirements (CPUs, memory, GPUs)
-   - Working directory
-   - Output/error log paths
-4. Click **Submit Job**
+1. Navigate to **Workflows**
+2. Open **Pipeline Configuration**
+3. Select modules and set resources (CPU, memory, GPU, time)
+4. Save configuration for the selected project
 
-#### Pre-configured Node Jobs
+#### Monitoring Pipeline Runs
 
-1. Navigate to **Job Manager**
-2. Select the **Node Execution** tab
-3. Choose from available pre-configured pipeline nodes
-4. Provide required input parameters
-5. Submit the job
-
-#### Creating Workflows
-
-1. Navigate to **Job Manager**
-2. Select the **Workflows** tab
-3. Add multiple job steps with dependencies
-4. Configure each step's parameters
-5. Submit the entire workflow
+1. Navigate to **Workflows**
+2. Open **Pipeline Status**
+3. Refresh status to poll Slurm and update manifest states
 
 ### Downloading Results
 
@@ -145,15 +129,22 @@ Host hpc-cluster
 ## Project Structure
 
 ```
-hpc-slurm-job-manager/
-├── Home.py                 # Main application entry point
-├── hpc_client_ssh.py      # SSH client wrapper for HPC operations
+Cortex/
+├── Home.py                  # Main entry + connection/auth UI
+├── hpc_client_ssh.py        # SSH client wrapper for HPC operations
 ├── pages/
-│   ├── 1_Job_Manager.py   # Job submission and management interface
-│   ├── 2_Visualize_Data.py # Data visualization tools
-│   └── 3_Download_Data.py  # File download interface
-├── requirements.txt        # Python dependencies
-└── README.md              # This file
+│   ├── 1_Workflows.py       # Pipeline configuration + status
+│   ├── 2_Visualize_Data.py  # Data visualization tools
+│   └── 3_Download_Data.py   # File download interface
+├── scripts/
+│   ├── cortex_trigger.py    # External auto-trigger script
+│   └── cortex_trigger.sh    # Scheduler wrapper
+├── utils/
+│   ├── bids.py
+│   ├── hpc_io.py
+│   ├── modules.py
+│   └── sidebar.py
+└── README.md
 ```
 
 ## Dependencies

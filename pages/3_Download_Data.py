@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+from utils.sidebar import render_project_selector
 
 st.set_page_config(page_title="Download Data", page_icon="📥", layout="wide")
 
@@ -11,6 +12,8 @@ if not st.session_state.get("connected", False) or not st.session_state.get("cli
     st.stop()
 
 client = st.session_state.client
+
+render_project_selector(client)
 
 if "_home_dir" not in st.session_state:
     st.session_state["_home_dir"] = client._run("echo $HOME").strip()
@@ -36,23 +39,15 @@ else:
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    # Project selection
-    try:
-        project_dirs = client.list_project_directories()
-        if project_dirs:
-            default_idx = project_dirs.index(default_project) if default_project in project_dirs else 0
-            selected_project = st.selectbox(
-                "Select Project",
-                options=project_dirs,
-                index=default_idx,
-                help="Projects found in ~/projects/"
-            )
-        else:
-            st.warning("No projects found in ~/projects/")
-            selected_project = st.text_input("Project Name", "")
-    except Exception as e:
-        st.warning(f"Could not load projects: {e}")
-        selected_project = st.text_input("Project Name", "")
+    selected_project = st.session_state.get("selected_project")
+    if not selected_project and default_project:
+        st.session_state["selected_project"] = default_project
+        selected_project = default_project
+
+    if selected_project:
+        st.info(f"Active project: `{selected_project}`")
+    else:
+        st.warning("Select a project from the sidebar to continue.")
 
 with col2:
     # Node/directory selection

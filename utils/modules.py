@@ -22,7 +22,7 @@ def build_container_configs(hpc_user: str) -> dict:
     """Return the module registry with the authenticated HPC username in image paths."""
     return {
         "DebugTest": {
-            "image_path": f"/home/{hpc_user}/repos/debug_test.sif",
+            "image_path": f"/home/{hpc_user}/cortex/modules/debug_test.sif",
             "command_template": (
                 "python /app/test_script.py "
                 "--input {input_file} --output {output_dir} "
@@ -40,7 +40,7 @@ def build_container_configs(hpc_user: str) -> dict:
             "description": "Debug test container for workflow validation",
         },
         "BabySeg": {
-            "image_path": f"/home/{hpc_user}/images/babyseg.sif",
+            "image_path": f"/home/{hpc_user}/cortex/modules/babyseg.sif",
             "command_template": (
                 "python /app/run_babyseg.py --input {input_file} --output {output_dir}"
             ),
@@ -56,7 +56,7 @@ def build_container_configs(hpc_user: str) -> dict:
             "description": "Infant brain segmentation",
         },
         "GAMBAS": {
-            "image_path": f"/home/{hpc_user}/images/gambas.sif",
+            "image_path": f"/home/{hpc_user}/cortex/modules/gambas.sif",
             "command_template": (
                 "python /app/run_gambas.py --input {input_file} --output {output_dir}"
             ),
@@ -72,7 +72,7 @@ def build_container_configs(hpc_user: str) -> dict:
             "description": "Brain tissue segmentation",
         },
         "Circumference": {
-            "image_path": f"/home/{hpc_user}/images/circumference.sif",
+            "image_path": f"/home/{hpc_user}/cortex/modules/circumference.sif",
             "command_template": (
                 "python /app/run_circumference.py --input {input_file} --output {output_dir}"
             ),
@@ -88,7 +88,7 @@ def build_container_configs(hpc_user: str) -> dict:
             "description": "Head circumference measurement (requires GAMBAS)",
         },
         "MRR": {
-            "image_path": f"/home/{hpc_user}/images/mrr.sif",
+            "image_path": f"/home/{hpc_user}/cortex/modules/mrr.sif",
             "command_template": (
                 "python /app/run_mrr.py --input {input_file} --output {output_dir}"
             ),
@@ -104,7 +104,7 @@ def build_container_configs(hpc_user: str) -> dict:
             "description": "MRI reconstruction and registration",
         },
         "fMRIPrep": {
-            "image_path": f"/home/{hpc_user}/images/fmriprep.sif",
+            "image_path": f"/home/{hpc_user}/cortex/modules/fmriprep.sif",
             "command_template": (
                 "fmriprep {bids_dir} {output_dir} participant --participant-label {subject}"
             ),
@@ -121,7 +121,7 @@ def build_container_configs(hpc_user: str) -> dict:
         },
         # To add a new module, copy a block above and fill in the fields.
         # "SuperSynth": {
-        #     "image_path": f"/home/{hpc_user}/images/supersynth.sif",
+        #     "image_path": f"/home/{hpc_user}/cortex/modules/supersynth.sif",
         #     "command_template": (
         #         "python /app/run_supersynth.py --input {input_file} --output {output_dir}"
         #     ),

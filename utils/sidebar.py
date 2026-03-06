@@ -1,6 +1,13 @@
 import streamlit as st
 
 
+def get_project_list(client, refresh: bool = False) -> list[str]:
+    """Return cached project list, optionally refreshing from HPC."""
+    if refresh or "_project_list" not in st.session_state:
+        _refresh_project_list(client)
+    return st.session_state.get("_project_list", [])
+
+
 def render_project_selector(client) -> str | None:
     """Render the global project selector in the sidebar.
 
@@ -13,11 +20,7 @@ def render_project_selector(client) -> str | None:
     st.sidebar.divider()
     st.sidebar.header("Project")
 
-    # Load project list once per session; allow manual refresh
-    if "_project_list" not in st.session_state:
-        _refresh_project_list(client)
-
-    projects = st.session_state.get("_project_list", [])
+    projects = get_project_list(client)
 
     if not projects:
         st.sidebar.caption("No projects found in ~/projects/")
@@ -25,19 +28,25 @@ def render_project_selector(client) -> str | None:
             _refresh_project_list(client)
         return None
 
-    # Preserve current selection across reruns
+    # Preserve current selection across reruns/page switches
     current = st.session_state.get("selected_project")
     default_idx = projects.index(current) if current in projects else 0
+
+    widget_key = "_sidebar_selected_project"
+    desired_value = projects[default_idx]
+    if st.session_state.get(widget_key) != desired_value:
+        st.session_state[widget_key] = desired_value
 
     st.sidebar.selectbox(
         "Active project",
         options=projects,
-        index=default_idx,
-        key="selected_project",
+        key=widget_key,
     )
 
+    st.session_state["selected_project"] = st.session_state.get(widget_key)
+
     if st.sidebar.button("Refresh projects", use_container_width=True):
-        _refresh_project_list(client)
+        get_project_list(client, refresh=True)
         st.rerun()
 
     return st.session_state.get("selected_project")
@@ -45,7 +54,15 @@ def render_project_selector(client) -> str | None:
 
 def clear_project_state() -> None:
     """Clear project-related and connection-cached session state on disconnect."""
-    for key in ("selected_project", "_project_list", "_home_dir", "_config_project"):
+    for key in (
+        "selected_project",
+        "_project_list",
+        "_home_dir",
+        "_config_project",
+        "_sidebar_selected_project",
+        "_home_selected_project",
+        "_workflows_selected_project",
+    ):
         st.session_state.pop(key, None)
 
 

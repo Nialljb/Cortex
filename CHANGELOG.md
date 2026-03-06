@@ -7,6 +7,22 @@ Format: `## YYYY-MM-DD` heading, then one entry per change with file(s) and reas
 
 ## 2026-03-06
 
+### Project context persistence + landing redesign
+- **`pages/3_Download_Data.py`** — replaced local per-page project selection with the shared global selector (`st.session_state["selected_project"]` via `render_project_selector()`), so the active project now persists when navigating between pages.
+- **`utils/sidebar.py`** — added `get_project_list(client, refresh=False)` and reused it in `render_project_selector()` to centralize cached project-list loading/refresh behavior.
+- **`utils/sidebar.py` + `Home.py`** — fixed cross-page project reset by using page-specific widget keys (`_sidebar_selected_project`, `_home_selected_project`) synced to a single canonical state key (`selected_project`), preventing Streamlit widget-key collisions when switching pages/tabs.
+- **`Home.py`** — redesigned connected-state layout into a project-centric landing page: main-area active project picker, project summary metrics (subjects/sessions/modules and manifest status counts), and quick action cards for Workflows/Visualize/Download.
+- **`Home.py`** — applied a `neuro_dashboard_mockup`-inspired visual hierarchy (top status strip, panel headers, dark metric cards, and compact navigation panel) while preserving existing app behavior and project context flow.
+- **`pages/1_Workflows.py`** — applied the same mockup-inspired panel/card styling (top strip, compact section headers, status cards) and added a main-area Active Project selector synced to global `selected_project`, so project context is visible and editable without relying on sidebar focus.
+- **`utils/sidebar.py`** — `clear_project_state()` now also clears `_workflows_selected_project` to fully reset project UI widgets on disconnect.
+
+### UI simplification: remove manual trigger + projects browser
+- **`pages/1_Workflows.py`** — removed the **Manual Trigger** tab and all immediate-submission logic from the Workflows page, leaving Pipeline Configuration and Pipeline Status only; aligns the UI with config-driven pipelines.
+- **`pages/4_Projects.py`** — deleted the Projects/Data Browser page so it is no longer shown as a Streamlit page.
+- **`Home.py`** — removed the Data Explorer navigation card/button and updated feature text to remove Manual Trigger and reflect the streamlined Workflows flow.
+- **`utils/bids_index.py`** — deleted unused indexed-browser utility module after removing the Projects browser page.
+- **`README.md`** — updated feature, usage, and project-structure sections to reflect the current Workflows/Visualize/Download pages and remove legacy Job Manager tab documentation.
+
 ### Bug fixes: path hardcoding + dead code removal
 - **`pages/3_Download_Data.py`** — replaced hardcoded `/home/{username}/projects/` (lines 59 & 83) with `home_dir` resolved from `$HOME` via `client._run("echo $HOME")` cached in session state; matches the fix applied to `2_Visualize_Data.py`. Renamed local `home_dir` variable to `local_home` to avoid shadowing the HPC path.
 - **`utils/session.py`** — deleted; `check_connection()` and `require_connection()` were defined but never imported by any page. Each page has its own inline connection guard that handles the UI messaging correctly.

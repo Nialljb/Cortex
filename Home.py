@@ -2,7 +2,9 @@ import streamlit as st
 import os
 import time
 from hpc_client_ssh import HPCSSHClient
-from utils.sidebar import render_project_selector, clear_project_state
+from utils.sidebar import clear_project_state, get_project_list
+from utils.bids import count_subjects_and_sessions
+from utils.hpc_io import read_json_from_hpc
 
 st.set_page_config(
     page_title="Home",
@@ -11,7 +13,94 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("🏠 Home")
+def inject_dashboard_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        .cortex-topbar {
+            background: #161b22;
+            border: 1px solid #2a3444;
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .cortex-logo {
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+        .cortex-badge {
+            border: 1px solid #2a3444;
+            border-radius: 4px;
+            padding: 3px 8px;
+            font-size: 11px;
+            color: #cdd9e5;
+            background: #1c2230;
+        }
+        .cortex-panel {
+            background: #161b22;
+            border: 1px solid #2a3444;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        .cortex-panel-header {
+            padding: 9px 12px;
+            border-bottom: 1px solid #2a3444;
+            background: #1c2230;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #768a9e;
+            font-weight: 600;
+        }
+        .cortex-panel-body {
+            padding: 12px;
+        }
+        .cortex-stat {
+            background: #1c2230;
+            border: 1px solid #2a3444;
+            border-radius: 6px;
+            padding: 10px;
+        }
+        .cortex-stat-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #768a9e;
+            margin-bottom: 6px;
+        }
+        .cortex-stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #cdd9e5;
+            line-height: 1;
+        }
+        .cortex-good { color: #81c784; }
+        .cortex-warn { color: #ffb74d; }
+        .cortex-bad { color: #f06292; }
+        .cortex-linkcard-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .cortex-linkcard-text {
+            color: #768a9e;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+inject_dashboard_styles()
 
 # Security configuration
 SESSION_TIMEOUT_SECONDS = 1800  # 30 minutes
@@ -68,8 +157,6 @@ if st.session_state.connected and st.session_state.client:
         st.session_state.login_attempts = 0  # Reset on manual disconnect
         clear_project_state()
         st.rerun()
-
-    render_project_selector(st.session_state.client)
 
 else:
     st.sidebar.info("Not connected")
@@ -167,89 +254,148 @@ else:
                         st.error(f"❌ Connection failed: {e}\n{remaining} attempts remaining")
 
 # Main page content
-st.title("🧠 HPC Slurm Job Manager")
-st.write("Welcome to the HPC Slurm Job Manager - manage your cluster jobs with ease.")
+st.markdown(
+    """
+    <div class="cortex-topbar">
+      <div class="cortex-logo">Cortex <span style="color:#768a9e;">Neuro Pipeline Dashboard</span></div>
+      <div class="cortex-badge">NaN Cluster</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+st.markdown("## Project Landing")
+st.caption("Select one active project and use it across Workflows, Visualize, and Download.")
 
 if st.session_state.connected:
-    st.success(f"Connected to **{st.session_state.hostname}** as **{st.session_state.username}**")
+    st.markdown(
+        f"<div class='cortex-badge'>● Connected as {st.session_state.username}@{st.session_state.hostname}</div>",
+        unsafe_allow_html=True,
+    )
 
-    st.divider()
+    client = st.session_state.client
+    projects = get_project_list(client)
 
-    col1, col2, col3, col4 = st.columns(4)
+    st.markdown("<div class='cortex-panel'><div class='cortex-panel-header'>Active Project</div><div class='cortex-panel-body'>", unsafe_allow_html=True)
+    c_proj, c_refresh = st.columns([5, 1])
+    with c_proj:
+        if projects:
+            current = st.session_state.get("selected_project")
+            default_idx = projects.index(current) if current in projects else 0
+            home_widget_key = "_home_selected_project"
+            desired_project = projects[default_idx]
+            if st.session_state.get(home_widget_key) != desired_project:
+                st.session_state[home_widget_key] = desired_project
+
+            selected_project = st.selectbox(
+                "Active Project",
+                options=projects,
+                key=home_widget_key,
+                help="This selection is shared across all pages.",
+            )
+            st.session_state["selected_project"] = selected_project
+        else:
+            selected_project = None
+            st.warning("No projects found in `~/projects/`.")
+
+    with c_refresh:
+        st.write("")
+        if st.button("Refresh", use_container_width=True):
+            get_project_list(client, refresh=True)
+            st.rerun()
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+    if selected_project:
+        if "_home_dir" not in st.session_state:
+            st.session_state["_home_dir"] = client._run("echo $HOME").strip()
+        home_dir = st.session_state["_home_dir"]
+        project_path = f"{home_dir}/projects/{selected_project}"
+        config_path = f"{project_path}/.cortex/pipeline_config.json"
+
+        with st.spinner("Loading project summary..."):
+            num_subjects, num_sessions = count_subjects_and_sessions(client, project_path)
+            pipeline_config = read_json_from_hpc(client, config_path)
+            configured_modules = pipeline_config.get("modules", [])
+            manifest = client.read_pipeline_manifest(project_path)
+
+        status_counts = {"queued": 0, "running": 0, "complete": 0, "failed": 0}
+        for modules in manifest.values():
+            for info in modules.values():
+                status = info.get("status")
+                if status in status_counts:
+                    status_counts[status] += 1
+
+        st.markdown("<div class='cortex-panel'><div class='cortex-panel-header'>Project Summary</div><div class='cortex-panel-body'>", unsafe_allow_html=True)
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.markdown(
+                f"<div class='cortex-stat'><div class='cortex-stat-label'>Project</div><div class='cortex-stat-value' style='font-size:18px'>{selected_project}</div></div>",
+                unsafe_allow_html=True,
+            )
+        with m2:
+            st.markdown(
+                f"<div class='cortex-stat'><div class='cortex-stat-label'>Subjects</div><div class='cortex-stat-value'>{num_subjects}</div></div>",
+                unsafe_allow_html=True,
+            )
+        with m3:
+            st.markdown(
+                f"<div class='cortex-stat'><div class='cortex-stat-label'>Sessions</div><div class='cortex-stat-value'>{num_sessions}</div></div>",
+                unsafe_allow_html=True,
+            )
+        with m4:
+            st.markdown(
+                f"<div class='cortex-stat'><div class='cortex-stat-label'>Configured Modules</div><div class='cortex-stat-value'>{len(configured_modules)}</div></div>",
+                unsafe_allow_html=True,
+            )
+
+        s1, s2, s3, s4 = st.columns(4)
+        with s1:
+            st.markdown(
+                f"<div class='cortex-stat'><div class='cortex-stat-label'>Queued</div><div class='cortex-stat-value cortex-warn'>{status_counts['queued']}</div></div>",
+                unsafe_allow_html=True,
+            )
+        with s2:
+            st.markdown(
+                f"<div class='cortex-stat'><div class='cortex-stat-label'>Running</div><div class='cortex-stat-value'>{status_counts['running']}</div></div>",
+                unsafe_allow_html=True,
+            )
+        with s3:
+            st.markdown(
+                f"<div class='cortex-stat'><div class='cortex-stat-label'>Complete</div><div class='cortex-stat-value cortex-good'>{status_counts['complete']}</div></div>",
+                unsafe_allow_html=True,
+            )
+        with s4:
+            st.markdown(
+                f"<div class='cortex-stat'><div class='cortex-stat-label'>Failed</div><div class='cortex-stat-value cortex-bad'>{status_counts['failed']}</div></div>",
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div></div>", unsafe_allow_html=True)
+
+        if configured_modules:
+            st.caption(f"Pipeline configuration: {' → '.join(configured_modules)}")
+        else:
+            st.caption("No pipeline modules configured yet.")
+
+    st.markdown("<div class='cortex-panel'><div class='cortex-panel-header'>Navigation</div><div class='cortex-panel-body'>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.markdown("### 🔄 Workflows")
-        st.write("Configure analysis pipelines, submit jobs to the HPC cluster, and monitor pipeline status.")
-        if st.button("Go to Workflows", use_container_width=True):
+        st.markdown("<div class='cortex-linkcard-title'>🔄 Workflows</div>", unsafe_allow_html=True)
+        st.markdown("<div class='cortex-linkcard-text'>Configure module pipelines and review pipeline status.</div>", unsafe_allow_html=True)
+        if st.button("Open Workflows", use_container_width=True):
             st.switch_page("pages/1_Workflows.py")
 
     with col2:
-        st.markdown("### 📊 Visualize Data")
-        st.write("Visualize and analyze your results with interactive plots and dashboards.")
-        if st.button("Go to Visualize", use_container_width=True):
+        st.markdown("<div class='cortex-linkcard-title'>📊 Visualize Data</div>", unsafe_allow_html=True)
+        st.markdown("<div class='cortex-linkcard-text'>Explore data structure and quick visual summaries.</div>", unsafe_allow_html=True)
+        if st.button("Open Visualize", use_container_width=True):
             st.switch_page("pages/2_Visualize_Data.py")
 
     with col3:
-        st.markdown("### 📥 Download Data")
-        st.write("Download results and outputs from your HPC jobs to your local machine.")
-        if st.button("Go to Download", use_container_width=True):
+        st.markdown("<div class='cortex-linkcard-title'>📥 Download Data</div>", unsafe_allow_html=True)
+        st.markdown("<div class='cortex-linkcard-text'>Browse remote output folders and download files locally.</div>", unsafe_allow_html=True)
+        if st.button("Open Download", use_container_width=True):
             st.switch_page("pages/3_Download_Data.py")
-
-    # with col4:
-    #     st.markdown("### 📚 Data Explorer")
-    #     st.write("Explore and visualize your data files interactively.")
-    #     if st.button("Go to Data Explorer", use_container_width=True):
-    #         st.switch_page("pages/4_Data_Explorer.py")
-
-    with col4:
-        st.markdown("### 📚 Data Explorer")
-        st.write("Explore and visualize your data files interactively.")
-        if st.button("Go to Data Explorer", use_container_width=True):
-            st.switch_page("pages/4_Projects.py")
-
-
-    st.divider()
-
-    st.divider()
-    st.markdown("""
-    ## 🧠 NaN Slurm Job Manager
-
-    A comprehensive interface for managing high-performance computing jobs on Slurm clusters.
-
-    ### Features
-
-    #### 🔄 Workflows
-    - **Pipeline Configuration**: Define which modules to run and their resource allocations per project
-    - **Manual Trigger**: Submit the configured pipeline immediately for selected subjects/sessions
-    - **Slurm Chaining**: Modules with dependencies are automatically chained with `afterok`
-    - **Pipeline Status**: Track job status per subject/session across all modules
-
-    #### 📥 Download Data
-    - **Smart File Browser**: Navigate remote directories with ease
-    - **Batch Downloads**: Download multiple files at once
-    - **Auto-detection**: Automatically find output files from your jobs
-    - **Progress Tracking**: Monitor download progress for large files
-
-    #### 📊 Visualize Data
-    - **Interactive Plots**: Create dynamic visualizations of your results
-    - **Data Exploration**: Browse and analyze datasets
-    - **Export Options**: Save visualizations in multiple formats
-    - **Custom Dashboards**: Build personalized analytics views
-
-    ### Quick Start
-
-    1. Connect to your HPC cluster using the sidebar
-    2. Navigate to Job Manager to submit jobs
-    3. Monitor job status in real-time
-    4. Download results when complete
-    5. Visualize and analyze your data
-
-    ### Need Help?
-
-    - Check the documentation for each page
-    - View example workflows in the Workflow tab
-    - Contact support if you encounter issues
-    """)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
 else:
     st.info("👈 Please connect to your HPC cluster using the sidebar to get started.")

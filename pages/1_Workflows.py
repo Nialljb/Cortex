@@ -1,14 +1,100 @@
-import re
 import streamlit as st
 from datetime import datetime
 
-from utils.sidebar import render_project_selector
+from utils.sidebar import render_project_selector, get_project_list
 from utils.modules import build_container_configs, resolve_submission_order
 from utils.hpc_io import read_json_from_hpc, write_json_to_hpc
 
 st.set_page_config(page_title="Workflows", page_icon="🔄", layout="wide")
 
-st.title("Workflows")
+def inject_workflow_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        .wf-topbar {
+            background: #161b22;
+            border: 1px solid #2a3444;
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .wf-logo {
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+        .wf-badge {
+            border: 1px solid #2a3444;
+            border-radius: 4px;
+            padding: 3px 8px;
+            font-size: 11px;
+            color: #cdd9e5;
+            background: #1c2230;
+        }
+        .wf-panel {
+            background: #161b22;
+            border: 1px solid #2a3444;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        .wf-panel-header {
+            padding: 9px 12px;
+            border-bottom: 1px solid #2a3444;
+            background: #1c2230;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #768a9e;
+            font-weight: 600;
+        }
+        .wf-panel-body {
+            padding: 12px;
+        }
+        .wf-status-card {
+            background: #1c2230;
+            border: 1px solid #2a3444;
+            border-radius: 6px;
+            padding: 10px;
+        }
+        .wf-status-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #768a9e;
+            margin-bottom: 6px;
+        }
+        .wf-status-value {
+            font-size: 22px;
+            font-weight: 600;
+            color: #cdd9e5;
+            line-height: 1;
+        }
+        .wf-good { color: #81c784; }
+        .wf-warn { color: #ffb74d; }
+        .wf-bad { color: #f06292; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+inject_workflow_styles()
+st.markdown(
+    """
+    <div class="wf-topbar">
+      <div class="wf-logo">Cortex <span style="color:#768a9e;">Workflow Orchestrator</span></div>
+      <div class="wf-badge">Pipeline Configuration + Status</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+st.markdown("## Workflows")
 
 # ── Connection guard ──────────────────────────────────────────────────────────
 if not st.session_state.get("connected") or not st.session_state.get("client"):
@@ -30,10 +116,38 @@ CONTAINER_CONFIGS = build_container_configs(hpc_username)
 # ── Sidebar: global project selector ─────────────────────────────────────────
 render_project_selector(client)
 
+projects = get_project_list(client)
+
+st.markdown("<div class='wf-panel'><div class='wf-panel-header'>Active Project</div><div class='wf-panel-body'>", unsafe_allow_html=True)
+pcol, rcol = st.columns([5, 1])
+with pcol:
+    if projects:
+        current = st.session_state.get("selected_project")
+        default_idx = projects.index(current) if current in projects else 0
+        widget_key = "_workflows_selected_project"
+        desired_project = projects[default_idx]
+        if st.session_state.get(widget_key) != desired_project:
+            st.session_state[widget_key] = desired_project
+        selected_project = st.selectbox(
+            "Project",
+            options=projects,
+            key=widget_key,
+            help="Shared across all pages.",
+        )
+        st.session_state["selected_project"] = selected_project
+    else:
+        selected_project = None
+        st.warning("No projects found in `~/projects/`.")
+with rcol:
+    st.write("")
+    if st.button("Refresh", key="wf_refresh_projects", use_container_width=True):
+        get_project_list(client, refresh=True)
+        st.rerun()
+st.markdown("</div></div>", unsafe_allow_html=True)
+
 # ── Project context ───────────────────────────────────────────────────────────
-selected_project = st.session_state.get("selected_project")
 if not selected_project:
-    st.info("Select a project from the sidebar to get started.")
+    st.info("Select an active project to get started.")
     st.stop()
 
 # Cache home dir for the duration of the session to avoid repeated SSH calls
@@ -44,7 +158,7 @@ home_dir = st.session_state["_home_dir"]
 project_path = f"{home_dir}/projects/{selected_project}"
 PIPELINE_CONFIG_PATH = f"{project_path}/.cortex/pipeline_config.json"
 
-st.caption(f"Project path: `{project_path}`")
+st.markdown(f"<div class='wf-badge'>Project path: {project_path}</div>", unsafe_allow_html=True)
 
 # ── Helper: manifest status refresh ──────────────────────────────────────────
 def refresh_manifest_statuses(manifest: dict) -> dict:
@@ -103,16 +217,14 @@ if st.session_state.get(_config_project_key) != selected_project:
 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_config, tab_trigger, tab_status = st.tabs(
-    ["Pipeline Configuration", "Manual Trigger", "Pipeline Status"]
-)
+tab_config, tab_status = st.tabs(["Pipeline Configuration", "Pipeline Status"])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — PIPELINE CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_config:
-    st.header("Pipeline Configuration")
+    st.markdown("<div class='wf-panel'><div class='wf-panel-header'>Pipeline Configuration</div><div class='wf-panel-body'>", unsafe_allow_html=True)
     st.write(
         "Select the modules to include in this project's pipeline and set resource "
         "allocations. Save the configuration to persist it for this project — the saved "
@@ -215,340 +327,16 @@ with tab_config:
                 st.session_state[_config_project_key] = ""  # force reload on next render
             except Exception as exc:
                 st.error(f"Failed to save configuration: {exc}")
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — MANUAL TRIGGER
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_trigger:
-    st.header("Manual Trigger")
-    st.write(
-        "Submit the configured pipeline immediately for selected subjects/sessions. "
-        "Already-completed sessions (per the pipeline manifest) are skipped automatically."
-    )
-
-    config = read_json_from_hpc(client, PIPELINE_CONFIG_PATH)
-    if not config:
-        st.info(
-            "No pipeline configuration found for this project. "
-            "Set one up in the **Pipeline Configuration** tab first."
-        )
-        st.stop()
-
-    trigger_modules = config.get("modules", [])
-    resource_overrides = config.get("resource_overrides", {})
-
-    try:
-        ordered = resolve_submission_order(trigger_modules, CONTAINER_CONFIGS)
-    except ValueError as exc:
-        st.error(f"Dependency error in saved config: {exc}")
-        st.stop()
-
-    st.info(f"Configured pipeline: **{' → '.join(ordered)}**")
-
-    # Warn about unresolved dependencies
-    for mod in ordered:
-        req = CONTAINER_CONFIGS[mod].get("requires_derivative")
-        if req and req not in ordered:
-            st.warning(
-                f"**{mod}** requires **{req.upper()}** — not in pipeline. "
-                f"Ensure `derivatives/{req}/` exists for all subjects."
-            )
-
-    st.markdown("---")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        subject_filter = st.text_input(
-            "Subject filter (optional)",
-            placeholder="sub-01, sub-02",
-            help="Comma-separated subject IDs. Leave blank to process all.",
-        )
-    with col2:
-        session_filter = st.text_input(
-            "Session filter (optional)",
-            placeholder="ses-01",
-            help="Partial match on session label. Leave blank for all.",
-        )
-
-    dry_run = st.checkbox("Dry run (preview jobs without submitting)")
-
-    if st.button("Submit Pipeline", type="primary", use_container_width=True):
-        manifest = client.read_pipeline_manifest(project_path)
-
-        try:
-            all_items = client.list_directory(project_path)
-            subjects = sorted(s for s in all_items if s.startswith("sub-"))
-        except Exception as exc:
-            st.error(f"Could not scan project directory: {exc}")
-            subjects = []
-
-        if subject_filter:
-            filter_list = [s.strip() for s in subject_filter.split(",")]
-            subjects = [s for s in subjects if s in filter_list]
-
-        if not subjects:
-            st.warning("No matching subjects found in project directory.")
-        else:
-            progress = st.progress(0)
-            submitted_count = 0
-            skipped_count = 0
-
-            for sub_idx, subject in enumerate(subjects):
-                subject_path = f"{project_path}/{subject}"
-
-                try:
-                    sub_contents = client.list_directory(subject_path)
-                    sessions = sorted(d for d in sub_contents if d.startswith("ses-"))
-                except Exception:
-                    sessions = []
-
-                if not sessions:
-                    sessions = [None]
-
-                for session in sessions:
-                    session_label = session or "no_session"
-
-                    if session_filter and session and session_filter not in session:
-                        continue
-
-                    manifest_key = f"{subject}/{session_label}"
-                    if manifest_key not in manifest:
-                        manifest[manifest_key] = {}
-
-                    # Accumulate job IDs within this subject/session for chaining
-                    session_job_ids: dict[str, str] = {}
-
-                    for module_name in ordered:
-                        cfg = CONTAINER_CONFIGS[module_name]
-
-                        # Skip already-completed entries
-                        existing = manifest[manifest_key].get(module_name, {})
-                        if existing.get("status") == "complete":
-                            st.write(
-                                f"✓ `{subject}/{session_label}` — **{module_name}**: "
-                                "already complete, skipping"
-                            )
-                            skipped_count += 1
-                            continue
-
-                        # ── Resolve input and build command ───────────────
-                        command = None
-
-                        if cfg["input_type"] == "bids_root":
-                            subject_id = subject.replace("sub-", "")
-                            output_dir = (
-                                f"{project_path}/derivatives/{cfg['output_name']}"
-                            )
-                            command = cfg["command_template"].format(
-                                bids_dir=project_path,
-                                output_dir=output_dir,
-                                subject=subject_id,
-                            )
-
-                        elif cfg["input_type"] == "acquisition":
-                            search_path = (
-                                f"{subject_path}/{session}/{cfg['input_subdir']}"
-                                if session
-                                else f"{subject_path}/{cfg['input_subdir']}"
-                            )
-                            try:
-                                file_list = client.list_directory(search_path)
-                            except Exception:
-                                st.write(
-                                    f"⏭ `{subject}/{session_label}` — **{module_name}**: "
-                                    f"`{cfg['input_subdir']}` dir not found"
-                                )
-                                skipped_count += 1
-                                continue
-                            input_file = next(
-                                (
-                                    f"{search_path}/{fn}"
-                                    for fn in file_list
-                                    if re.search(cfg["input_pattern"], fn)
-                                ),
-                                None,
-                            )
-                            if not input_file:
-                                st.write(
-                                    f"⏭ `{subject}/{session_label}` — **{module_name}**: "
-                                    f"no file matching `{cfg['input_pattern']}`"
-                                )
-                                skipped_count += 1
-                                continue
-                            output_dir = (
-                                f"{project_path}/derivatives/{cfg['output_name']}"
-                                f"/{subject}/{session}"
-                                if session
-                                else f"{project_path}/derivatives/{cfg['output_name']}"
-                                f"/{subject}"
-                            )
-                            command = cfg["command_template"].format(
-                                input_file=input_file,
-                                output_dir=output_dir,
-                                subject=subject,
-                                session=session or "",
-                            )
-
-                        elif cfg["input_type"] == "derivatives":
-                            req = cfg["requires_derivative"]
-                            deriv_path = (
-                                f"{project_path}/derivatives/{req}"
-                                f"/{subject}/{session}/{cfg['input_subdir']}"
-                                if session
-                                else f"{project_path}/derivatives/{req}"
-                                f"/{subject}/{cfg['input_subdir']}"
-                            )
-                            try:
-                                file_list = client.list_directory(deriv_path)
-                            except Exception:
-                                st.write(
-                                    f"⏭ `{subject}/{session_label}` — **{module_name}**: "
-                                    f"no `{req}` derivative output found"
-                                )
-                                skipped_count += 1
-                                continue
-                            input_file = next(
-                                (
-                                    f"{deriv_path}/{fn}"
-                                    for fn in file_list
-                                    if re.search(cfg["input_pattern"], fn)
-                                ),
-                                None,
-                            )
-                            if not input_file:
-                                st.write(
-                                    f"⏭ `{subject}/{session_label}` — **{module_name}**: "
-                                    f"no matching file in `{req}` derivatives"
-                                )
-                                skipped_count += 1
-                                continue
-                            output_dir = (
-                                f"{project_path}/derivatives/{cfg['output_name']}"
-                                f"/{subject}/{session}"
-                                if session
-                                else f"{project_path}/derivatives/{cfg['output_name']}"
-                                f"/{subject}"
-                            )
-                            command = cfg["command_template"].format(
-                                input_file=input_file,
-                                output_dir=output_dir,
-                                subject=subject,
-                                session=session or "",
-                            )
-
-                        if command is None:
-                            st.write(
-                                f"⏭ `{subject}/{session_label}` — **{module_name}**: "
-                                f"unknown input_type `{cfg['input_type']}`"
-                            )
-                            skipped_count += 1
-                            continue
-
-                        # ── Slurm dependency chaining ─────────────────────
-                        req_mod = cfg.get("requires_derivative")
-                        dep_ids = (
-                            [session_job_ids[req_mod]]
-                            if req_mod and req_mod in session_job_ids
-                            else []
-                        )
-
-                        # ── Resource allocation (saved config → defaults) ──
-                        ov = resource_overrides.get(module_name, {})
-                        cpus = ov.get("cpus", cfg["default_cpus"])
-                        mem = ov.get("mem", cfg["default_mem"])
-                        gpus = ov.get("gpus", cfg["default_gpus"])
-                        time_limit = ov.get("time", cfg["default_time"])
-
-                        time_fmt = "%Y%m%d_%H%M%S"
-                        job_name = (
-                            f"{cfg['output_name']}_{subject}_{session_label}"
-                            f"_{datetime.now().strftime(time_fmt)}"
-                        )
-                        work_dir = f"{project_path}/work/{module_name.lower()}"
-                        log_file = (
-                            f"{project_path}/logs/{module_name.lower()}/{job_name}.out"
-                        )
-
-                        if dry_run:
-                            dep_str = (
-                                f" [after job {', '.join(dep_ids)}]" if dep_ids else ""
-                            )
-                            st.write(
-                                f"[DRY RUN] `{subject}/{session_label}` — "
-                                f"**{module_name}**{dep_str}"
-                            )
-                            st.code(command, language="bash")
-                            manifest[manifest_key][module_name] = {
-                                "status": "dry_run",
-                                "job_id": None,
-                                "submitted_at": datetime.now().isoformat(),
-                                "completed_at": None,
-                                "depends_on": [req_mod] if req_mod else [],
-                            }
-                        else:
-                            try:
-                                result = client.submit_apptainer_job(
-                                    image_path=cfg["image_path"],
-                                    command=command,
-                                    job_name=job_name,
-                                    work_dir=work_dir,
-                                    cpus=cpus,
-                                    mem=mem,
-                                    gpus=gpus,
-                                    time=time_limit,
-                                    output_log=log_file,
-                                    dependency_job_ids=dep_ids or None,
-                                )
-                                job_id = result["job_id"]
-                                session_job_ids[module_name] = job_id
-                                manifest[manifest_key][module_name] = {
-                                    "status": "queued",
-                                    "job_id": job_id,
-                                    "submitted_at": datetime.now().isoformat(),
-                                    "completed_at": None,
-                                    "depends_on": [req_mod] if req_mod else [],
-                                }
-                                submitted_count += 1
-                                st.write(
-                                    f"✅ `{subject}/{session_label}` — "
-                                    f"**{module_name}**: job `{job_id}`"
-                                )
-                            except Exception as exc:
-                                st.error(
-                                    f"❌ `{subject}/{session_label}` — "
-                                    f"**{module_name}**: {exc}"
-                                )
-                                manifest[manifest_key][module_name] = {
-                                    "status": "failed",
-                                    "job_id": None,
-                                    "submitted_at": datetime.now().isoformat(),
-                                    "completed_at": None,
-                                    "depends_on": [req_mod] if req_mod else [],
-                                    "error": str(exc),
-                                }
-
-                progress.progress((sub_idx + 1) / len(subjects))
-
-            progress.empty()
-
-            if dry_run:
-                st.info("Dry run complete — no jobs submitted.")
-            else:
-                client.write_pipeline_manifest(project_path, manifest)
-                st.success(
-                    f"Pipeline submitted: {submitted_count} jobs queued, "
-                    f"{skipped_count} already complete or skipped."
-                )
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — PIPELINE STATUS
+# TAB 2 — PIPELINE STATUS
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_status:
     import pandas as pd
 
-    st.header("Pipeline Status")
+    st.markdown("<div class='wf-panel'><div class='wf-panel-header'>Pipeline Status</div><div class='wf-panel-body'>", unsafe_allow_html=True)
     st.caption(f"Project: **{selected_project}**")
 
     refresh_clicked = st.button("Refresh Status", key="status_refresh")
@@ -584,6 +372,37 @@ with tab_status:
             rows.append(row)
 
         df_status = pd.DataFrame(rows)
+
+        status_counts = {"queued": 0, "running": 0, "complete": 0, "failed": 0}
+        for modules in manifest.values():
+            for info in modules.values():
+                status = info.get("status")
+                if status in status_counts:
+                    status_counts[status] += 1
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.markdown(
+                f"<div class='wf-status-card'><div class='wf-status-label'>Queued</div><div class='wf-status-value wf-warn'>{status_counts['queued']}</div></div>",
+                unsafe_allow_html=True,
+            )
+        with c2:
+            st.markdown(
+                f"<div class='wf-status-card'><div class='wf-status-label'>Running</div><div class='wf-status-value'>{status_counts['running']}</div></div>",
+                unsafe_allow_html=True,
+            )
+        with c3:
+            st.markdown(
+                f"<div class='wf-status-card'><div class='wf-status-label'>Complete</div><div class='wf-status-value wf-good'>{status_counts['complete']}</div></div>",
+                unsafe_allow_html=True,
+            )
+        with c4:
+            st.markdown(
+                f"<div class='wf-status-card'><div class='wf-status-label'>Failed</div><div class='wf-status-value wf-bad'>{status_counts['failed']}</div></div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
         st.dataframe(df_status, use_container_width=True, hide_index=True)
 
         with st.expander("View job details"):
@@ -594,3 +413,4 @@ with tab_status:
                 for mod, info in manifest[detail_key].items():
                     st.markdown(f"**{mod}**")
                     st.json(info)
+    st.markdown("</div></div>", unsafe_allow_html=True)
